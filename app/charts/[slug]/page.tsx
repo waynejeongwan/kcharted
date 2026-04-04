@@ -10,10 +10,12 @@ const CHART_META: Record<string, { name: string; icon: string; desc: string; wee
   'billboard-200':         { name: 'Billboard 200',         icon: '💿', desc: '미국 주간 앨범 차트', weekly: true },
 }
 
-async function getAvailableDates(chartId: string): Promise<string[]> {
+type ChartDateRow = { chart_date: string; kpop_count: number }
+
+async function getAvailableDates(chartId: string): Promise<ChartDateRow[]> {
   const { data } = await supabase.rpc('get_chart_dates', { p_chart_id: chartId })
   if (!data) return []
-  return data.map((r: { chart_date: string }) => r.chart_date)
+  return data as ChartDateRow[]
 }
 
 async function getChartEntries(chartId: string, date: string) {
@@ -57,16 +59,18 @@ export default async function ChartPage({ params, searchParams }: Props) {
     )
   }
 
-  const selectedDate = dateParam && availableDates.includes(dateParam)
+  const dateStrings = availableDates.map((r) => r.chart_date)
+
+  const selectedDate = dateParam && dateStrings.includes(dateParam)
     ? dateParam
-    : availableDates[0]
+    : dateStrings[0]
 
   const entries = await getChartEntries(chart.id, selectedDate)
   const kpopCount = entries.filter((e: any) => e.tracks?.artists?.is_kpop).length
 
-  const currentIdx = availableDates.indexOf(selectedDate)
-  const prevDate = availableDates[currentIdx + 1] ?? null
-  const nextDate = availableDates[currentIdx - 1] ?? null
+  const currentIdx = dateStrings.indexOf(selectedDate)
+  const prevDate = dateStrings[currentIdx + 1] ?? null
+  const nextDate = dateStrings[currentIdx - 1] ?? null
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-10">
@@ -93,6 +97,7 @@ export default async function ChartPage({ params, searchParams }: Props) {
           slug={slug}
           selectedDate={selectedDate}
           availableDates={availableDates}
+          dateStrings={dateStrings}
           prevDate={prevDate}
           nextDate={nextDate}
           weekly={meta.weekly}

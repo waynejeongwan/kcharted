@@ -3,10 +3,13 @@
 import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
+type ChartDateRow = { chart_date: string; kpop_count: number }
+
 interface Props {
   slug: string
   selectedDate: string
-  availableDates: string[]
+  availableDates: ChartDateRow[]
+  dateStrings: string[]
   prevDate: string | null
   nextDate: string | null
   weekly: boolean
@@ -20,7 +23,7 @@ function formatDate(dateStr: string, weekly: boolean) {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-export default function DatePicker({ slug, selectedDate, availableDates, prevDate, nextDate, weekly }: Props) {
+export default function DatePicker({ slug, selectedDate, availableDates, dateStrings, prevDate, nextDate, weekly }: Props) {
   const router = useRouter()
   const [showDropdown, setShowDropdown] = useState(false)
 
@@ -56,18 +59,23 @@ export default function DatePicker({ slug, selectedDate, availableDates, prevDat
         {showDropdown && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setShowDropdown(false)} />
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-20 bg-zinc-800 border border-zinc-600 rounded-xl overflow-hidden shadow-2xl w-60 max-h-72 overflow-y-auto">
-              {recentDates.map((date) => (
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-20 bg-zinc-800 border border-zinc-600 rounded-xl overflow-hidden shadow-2xl w-72 max-h-72 overflow-y-auto">
+              {recentDates.map((row) => (
                 <button
-                  key={date}
-                  onClick={() => goToDate(date)}
-                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
-                    date === selectedDate
+                  key={row.chart_date}
+                  onClick={() => goToDate(row.chart_date)}
+                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2 ${
+                    row.chart_date === selectedDate
                       ? 'bg-zinc-600 text-white font-semibold'
                       : 'text-zinc-300 hover:bg-zinc-700'
                   }`}
                 >
-                  {formatDate(date, weekly)}
+                  <span>{formatDate(row.chart_date, weekly)}</span>
+                  {row.kpop_count > 0 && (
+                    <span className="shrink-0 text-xs bg-pink-500/15 text-pink-400 px-2 py-0.5 rounded-full border border-pink-500/20 font-medium">
+                      K-POP {row.kpop_count}
+                    </span>
+                  )}
                 </button>
               ))}
               {availableDates.length > 80 && (
@@ -92,7 +100,7 @@ export default function DatePicker({ slug, selectedDate, availableDates, prevDat
       {/* 최신으로 */}
       {nextDate && (
         <button
-          onClick={() => goToDate(availableDates[0])}
+          onClick={() => goToDate(dateStrings[0])}
           className="text-xs px-3 py-2 rounded-xl bg-zinc-700 hover:bg-zinc-600 text-zinc-300 transition-colors whitespace-nowrap"
         >
           최신 ↑
