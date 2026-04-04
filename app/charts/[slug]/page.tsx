@@ -2,7 +2,6 @@ import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import DatePicker from './DatePicker'
-import { unstable_cache } from 'next/cache'
 
 const CHART_META: Record<string, { name: string; icon: string; desc: string; weekly: boolean }> = {
   'spotify-global-top-50': { name: 'Spotify Global Top 50', icon: '🎵', desc: '글로벌 일간 차트', weekly: false },
@@ -13,29 +12,21 @@ const CHART_META: Record<string, { name: string; icon: string; desc: string; wee
 
 type ChartDateRow = { chart_date: string; kpop_count: number }
 
-const getAvailableDates = unstable_cache(
-  async (chartId: string): Promise<ChartDateRow[]> => {
-    const { data } = await supabase.rpc('get_chart_dates', { p_chart_id: chartId })
-    if (!data) return []
-    return data as ChartDateRow[]
-  },
-  ['chart-dates'],
-  { revalidate: 3600 }  // 1시간 캐시
-)
+async function getAvailableDates(chartId: string): Promise<ChartDateRow[]> {
+  const { data } = await supabase.rpc('get_chart_dates', { p_chart_id: chartId })
+  if (!data) return []
+  return data as ChartDateRow[]
+}
 
-const getChartEntries = unstable_cache(
-  async (chartId: string, date: string) => {
-    const { data: entries } = await supabase
-      .from('chart_entries')
-      .select(`rank, tracks ( title, cover_url, is_album, artists ( name, is_kpop ) )`)
-      .eq('chart_id', chartId)
-      .eq('chart_date', date)
-      .order('rank', { ascending: true })
-    return entries ?? []
-  },
-  ['chart-entries'],
-  { revalidate: 3600 }  // 1시간 캐시
-)
+async function getChartEntries(chartId: string, date: string) {
+  const { data: entries } = await supabase
+    .from('chart_entries')
+    .select(`rank, tracks ( title, cover_url, is_album, artists ( name, is_kpop ) )`)
+    .eq('chart_id', chartId)
+    .eq('chart_date', date)
+    .order('rank', { ascending: true })
+  return entries ?? []
+}
 
 function youtubeSearchUrl(title: string, artist: string) {
   return `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} ${artist}`)}`
