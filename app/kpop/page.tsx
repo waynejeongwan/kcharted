@@ -74,9 +74,9 @@ export default async function KpopPage() {
               <span>아티스트</span>
               <div className="flex gap-4 text-right">
                 <span className="w-16">최고순위</span>
-                <span className="w-12">Top100</span>
+                <span className="w-12">총곡수</span>
                 <span className="w-12">Top40</span>
-                <span className="w-12">총주수</span>
+                <span className="w-16">Total Weeks</span>
               </div>
             </div>
 
@@ -108,18 +108,18 @@ export default async function KpopPage() {
                     </span>
                     <span className="w-12 text-zinc-300 font-mono text-sm">{s.total_songs}</span>
                     <span className="w-12 text-zinc-400 font-mono text-sm">{s.top40_songs}</span>
-                    <span className="w-12 text-zinc-500 font-mono text-sm">{s.total_weeks}</span>
+                    <span className="w-16 text-zinc-500 font-mono text-sm">{s.total_weeks}</span>
                   </div>
                 </div>
               ))}
             </div>
 
             <div className="mt-4 flex gap-4 text-xs text-zinc-600 px-3">
-              <span>최고순위: 해당 아티스트가 기록한 최고 차트 위치 (곡수 포함)</span>
+              <span>최고순위: 기록한 최고 위치 × 달성 곡수</span>
               <span>·</span>
-              <span>Top100/40: Hot 100 진입 곡수</span>
+              <span>총곡수: Hot 100 진입 곡수 합계</span>
               <span>·</span>
-              <span>총주수: 모든 곡의 차트 체류 주수 합계</span>
+              <span>Total Weeks: 모든 곡의 차트 체류 주수 합계</span>
             </div>
           </>
         )}
