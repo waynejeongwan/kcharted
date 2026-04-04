@@ -24,7 +24,7 @@ async function getKpopRankings(): Promise<ArtistRanking[]> {
         Authorization: `Bearer ${SUPABASE_KEY}`,
       },
       body: JSON.stringify({}),
-      next: { revalidate: 3600 },
+      cache: 'no-store',
     })
     if (!res.ok) return []
     const data = await res.json()

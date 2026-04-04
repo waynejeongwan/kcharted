@@ -5,7 +5,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const artistId = searchParams.get('artistId')
 
-  if (!artistId) return NextResponse.json([])
+  if (!artistId || artistId === 'undefined') return NextResponse.json([])
 
   // Hot 100 chart id
   const { data: chart } = await supabase
