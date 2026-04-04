@@ -99,18 +99,17 @@ export default function ChartList({ chartId, defaultDate }: Props) {
                   {track?.is_album ? '💿' : '♪'}
                 </div>
               )}
-              <div className="min-w-0 flex-1 flex items-center gap-1.5 overflow-hidden">
+              <div className="min-w-0 flex-1">
                 <a
                   href={ytUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="font-semibold text-white truncate shrink"
+                  className="font-semibold text-white hover:text-zinc-300 transition-colors leading-snug"
                   title={`YouTube에서 검색: ${track?.title}`}
                 >
                   {track?.title}
                 </a>
-                <span className="text-zinc-500 shrink-0">·</span>
-                <span className="text-zinc-300 text-sm truncate shrink">{artist?.name}</span>
+                <p className="text-zinc-400 text-sm leading-snug">{artist?.name}</p>
               </div>
               {isKpop && (
                 <span className="shrink-0 text-xs bg-pink-500/15 text-pink-400 px-2 py-0.5 rounded-full border border-pink-500/20 font-medium">

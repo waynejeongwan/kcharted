@@ -45,7 +45,7 @@ const CHARTS = [
 
 export default function Home() {
   return (
-    <div className="max-w-3xl mx-auto px-6 py-16">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16">
       <div className="mb-12 text-center">
         <h1 className="text-5xl font-bold mb-4 tracking-tight">🎵 kcharted</h1>
         <p className="text-zinc-400 text-lg">
