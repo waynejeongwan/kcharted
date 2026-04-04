@@ -1,7 +1,7 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 
 type ChartDateRow = { chart_date: string; kpop_count: number }
 
@@ -15,7 +15,7 @@ interface Props {
   weekly: boolean
 }
 
-function formatDate(dateStr: string, weekly: boolean) {
+function formatDateLabel(dateStr: string, weekly: boolean) {
   const d = new Date(dateStr + 'T00:00:00')
   if (weekly) {
     return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' }) + ' 주'
@@ -25,14 +25,41 @@ function formatDate(dateStr: string, weekly: boolean) {
 
 export default function DatePicker({ slug, selectedDate, availableDates, dateStrings, prevDate, nextDate, weekly }: Props) {
   const router = useRouter()
-  const [showDropdown, setShowDropdown] = useState(false)
+  const [open, setOpen] = useState(false)
+  const [selectedYear, setSelectedYear] = useState<number | null>(null)
+
+  // 연도별 그룹핑
+  const byYear = useMemo(() => {
+    const map: Record<number, ChartDateRow[]> = {}
+    for (const row of availableDates) {
+      const year = parseInt(row.chart_date.slice(0, 4))
+      if (!map[year]) map[year] = []
+      map[year].push(row)
+    }
+    return map
+  }, [availableDates])
+
+  const years = useMemo(() =>
+    Object.keys(byYear).map(Number).sort((a, b) => b - a),
+    [byYear]
+  )
 
   function goToDate(date: string) {
     router.push(`/charts/${slug}?date=${date}`)
-    setShowDropdown(false)
+    setOpen(false)
+    setSelectedYear(null)
   }
 
-  const recentDates = availableDates.slice(0, 80)
+  function openPicker() {
+    // 현재 선택된 날짜의 연도로 초기화
+    setSelectedYear(parseInt(selectedDate.slice(0, 4)))
+    setOpen(true)
+  }
+
+  function formatWeekLabel(dateStr: string) {
+    const d = new Date(dateStr + 'T00:00:00')
+    return `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}`
+  }
 
   return (
     <div className="flex items-center gap-2">
@@ -45,42 +72,84 @@ export default function DatePicker({ slug, selectedDate, availableDates, dateStr
         ‹
       </button>
 
-      {/* 날짜 드롭다운 */}
+      {/* 날짜 버튼 */}
       <div className="relative flex-1">
         <button
-          onClick={() => setShowDropdown(!showDropdown)}
+          onClick={openPicker}
           className="w-full flex items-center justify-center gap-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 rounded-xl px-4 py-2 transition-colors"
         >
           <span className="text-zinc-400 text-sm">📅</span>
-          <span className="text-zinc-100 font-semibold text-sm">{formatDate(selectedDate, weekly)}</span>
+          <span className="text-zinc-100 font-semibold text-sm">{formatDateLabel(selectedDate, weekly)}</span>
           <span className="text-zinc-500 text-xs">▾</span>
         </button>
 
-        {showDropdown && (
+        {open && (
           <>
-            <div className="fixed inset-0 z-10" onClick={() => setShowDropdown(false)} />
-            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-20 bg-zinc-800 border border-zinc-600 rounded-xl overflow-hidden shadow-2xl w-72 max-h-72 overflow-y-auto">
-              {recentDates.map((row) => (
-                <button
-                  key={row.chart_date}
-                  onClick={() => goToDate(row.chart_date)}
-                  className={`w-full text-left px-4 py-2.5 text-sm transition-colors flex items-center justify-between gap-2 ${
-                    row.chart_date === selectedDate
-                      ? 'bg-zinc-600 text-white font-semibold'
-                      : 'text-zinc-300 hover:bg-zinc-700'
-                  }`}
-                >
-                  <span>{formatDate(row.chart_date, weekly)}</span>
-                  {row.kpop_count > 0 && (
-                    <span className="shrink-0 text-xs bg-pink-500/15 text-pink-400 px-2 py-0.5 rounded-full border border-pink-500/20 font-medium">
-                      K-POP {row.kpop_count}
-                    </span>
-                  )}
-                </button>
-              ))}
-              {availableDates.length > 80 && (
-                <div className="px-4 py-2 text-zinc-500 text-xs border-t border-zinc-700">
-                  총 {availableDates.length}개 · URL에 ?date=YYYY-MM-DD 직접 입력 가능
+            <div className="fixed inset-0 z-10" onClick={() => { setOpen(false); setSelectedYear(null) }} />
+            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 z-20 bg-zinc-900 border border-zinc-700 rounded-2xl shadow-2xl overflow-hidden"
+              style={{ width: '340px' }}>
+
+              {/* 연도 선택 */}
+              {selectedYear === null ? (
+                <div className="p-3">
+                  <p className="text-zinc-500 text-xs mb-2 px-1">연도 선택</p>
+                  <div className="grid grid-cols-5 gap-1">
+                    {years.map(year => {
+                      const hasKpop = byYear[year].some(r => r.kpop_count > 0)
+                      const isCurrentYear = parseInt(selectedDate.slice(0, 4)) === year
+                      return (
+                        <button
+                          key={year}
+                          onClick={() => setSelectedYear(year)}
+                          className={`relative py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                            isCurrentYear
+                              ? 'bg-zinc-500 text-white'
+                              : 'text-zinc-300 hover:bg-zinc-700'
+                          }`}
+                        >
+                          {year}
+                          {hasKpop && (
+                            <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-pink-400" />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              ) : (
+                /* 주차 선택 */
+                <div className="p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <button
+                      onClick={() => setSelectedYear(null)}
+                      className="text-zinc-400 hover:text-white text-sm transition-colors"
+                    >
+                      ← 연도
+                    </button>
+                    <span className="text-white font-bold">{selectedYear}년</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1 max-h-60 overflow-y-auto">
+                    {byYear[selectedYear]?.slice().reverse().map(row => {
+                      const isSelected = row.chart_date === selectedDate
+                      return (
+                        <button
+                          key={row.chart_date}
+                          onClick={() => goToDate(row.chart_date)}
+                          className={`relative py-1.5 rounded-lg text-xs font-mono transition-colors ${
+                            isSelected
+                              ? 'bg-zinc-500 text-white font-bold'
+                              : 'text-zinc-300 hover:bg-zinc-700'
+                          }`}
+                          title={row.chart_date}
+                        >
+                          {formatWeekLabel(row.chart_date)}
+                          {row.kpop_count > 0 && (
+                            <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-pink-400" />
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </div>
