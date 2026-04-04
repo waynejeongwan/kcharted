@@ -11,13 +11,9 @@ const CHART_META: Record<string, { name: string; icon: string; desc: string; wee
 }
 
 async function getAvailableDates(chartId: string): Promise<string[]> {
-  const { data } = await supabase
-    .from('chart_entries')
-    .select('chart_date')
-    .eq('chart_id', chartId)
-    .order('chart_date', { ascending: false })
+  const { data } = await supabase.rpc('get_chart_dates', { p_chart_id: chartId })
   if (!data) return []
-  return [...new Set(data.map((r) => r.chart_date))]
+  return data.map((r: { chart_date: string }) => r.chart_date)
 }
 
 async function getChartEntries(chartId: string, date: string) {
