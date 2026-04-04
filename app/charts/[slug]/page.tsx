@@ -14,6 +14,7 @@ type ChartDateRow = { chart_date: string; kpop_count: number }
 
 async function getAvailableDates(chartId: string): Promise<ChartDateRow[]> {
   const { data } = await supabase.rpc('get_chart_dates', { p_chart_id: chartId })
+    .range(0, 5000)
   if (!data) return []
   return data as ChartDateRow[]
 }
