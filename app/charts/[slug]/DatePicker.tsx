@@ -10,6 +10,7 @@ interface Props {
   selectedDate: string
   availableDates: ChartDateRow[]
   dateStrings: string[]
+  yearStats: Record<string, number>
   prevDate: string | null
   nextDate: string | null
   weekly: boolean
@@ -23,7 +24,7 @@ function formatDateLabel(dateStr: string, weekly: boolean) {
   return d.toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
-export default function DatePicker({ slug, selectedDate, availableDates, dateStrings, prevDate, nextDate, weekly }: Props) {
+export default function DatePicker({ slug, selectedDate, availableDates, dateStrings, yearStats, prevDate, nextDate, weekly }: Props) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [selectedYear, setSelectedYear] = useState<number | null>(null)
@@ -93,23 +94,23 @@ export default function DatePicker({ slug, selectedDate, availableDates, dateStr
               {selectedYear === null ? (
                 <div className="p-3">
                   <p className="text-zinc-500 text-xs mb-2 px-1">연도 선택</p>
-                  <div className="grid grid-cols-5 gap-1">
+                  <div className="grid grid-cols-4 gap-1">
                     {years.map(year => {
-                      const hasKpop = byYear[year].some(r => r.kpop_count > 0)
+                      const kpopTotal = yearStats[String(year)] ?? 0
                       const isCurrentYear = parseInt(selectedDate.slice(0, 4)) === year
                       return (
                         <button
                           key={year}
                           onClick={() => setSelectedYear(year)}
-                          className={`relative py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                          className={`flex flex-col items-center py-2 px-1 rounded-lg transition-colors ${
                             isCurrentYear
                               ? 'bg-zinc-500 text-white'
                               : 'text-zinc-300 hover:bg-zinc-700'
                           }`}
                         >
-                          {year}
-                          {hasKpop && (
-                            <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-pink-400" />
+                          <span className="text-sm font-medium">{year}</span>
+                          {kpopTotal > 0 && (
+                            <span className="text-xs text-pink-400 font-medium leading-tight">K {kpopTotal}</span>
                           )}
                         </button>
                       )
@@ -128,23 +129,23 @@ export default function DatePicker({ slug, selectedDate, availableDates, dateStr
                     </button>
                     <span className="text-white font-bold">{selectedYear}년</span>
                   </div>
-                  <div className="grid grid-cols-5 gap-1 max-h-60 overflow-y-auto">
+                  <div className="grid grid-cols-4 gap-1 max-h-64 overflow-y-auto">
                     {byYear[selectedYear]?.slice().reverse().map(row => {
                       const isSelected = row.chart_date === selectedDate
                       return (
                         <button
                           key={row.chart_date}
                           onClick={() => goToDate(row.chart_date)}
-                          className={`relative py-1.5 rounded-lg text-xs font-mono transition-colors ${
+                          className={`flex flex-col items-center py-2 px-1 rounded-lg transition-colors ${
                             isSelected
                               ? 'bg-zinc-500 text-white font-bold'
                               : 'text-zinc-300 hover:bg-zinc-700'
                           }`}
                           title={row.chart_date}
                         >
-                          {formatWeekLabel(row.chart_date)}
+                          <span className="text-xs font-mono">{formatWeekLabel(row.chart_date)}</span>
                           {row.kpop_count > 0 && (
-                            <span className="absolute top-0.5 right-0.5 w-1 h-1 rounded-full bg-pink-400" />
+                            <span className="text-xs text-pink-400 font-medium leading-tight">K {row.kpop_count}</span>
                           )}
                         </button>
                       )

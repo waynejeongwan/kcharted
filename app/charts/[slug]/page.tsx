@@ -11,12 +11,14 @@ const CHART_META: Record<string, { name: string; icon: string; desc: string; wee
 }
 
 type ChartDateRow = { chart_date: string; kpop_count: number }
+type ChartNavData = { dates: ChartDateRow[]; year_stats: Record<string, number> }
 
-async function getAvailableDates(chartId: string): Promise<ChartDateRow[]> {
+async function getAvailableDates(chartId: string): Promise<ChartNavData> {
   const { data } = await supabase.rpc('get_chart_dates', { p_chart_id: chartId })
-    .range(0, 5000)
-  if (!data) return []
-  return data as ChartDateRow[]
+  if (!data) return { dates: [], year_stats: {} }
+  // returns json → data is array with one element
+  const result = Array.isArray(data) ? data[0] : data
+  return result as ChartNavData
 }
 
 async function getChartEntries(chartId: string, date: string) {
@@ -49,7 +51,7 @@ export default async function ChartPage({ params, searchParams }: Props) {
     .from('charts').select('id').eq('slug', slug).single()
   if (!chart) notFound()
 
-  const availableDates = await getAvailableDates(chart.id)
+  const { dates: availableDates, year_stats: yearStats } = await getAvailableDates(chart.id)
   if (availableDates.length === 0) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-12">
@@ -99,6 +101,7 @@ export default async function ChartPage({ params, searchParams }: Props) {
           selectedDate={selectedDate}
           availableDates={availableDates}
           dateStrings={dateStrings}
+          yearStats={yearStats}
           prevDate={prevDate}
           nextDate={nextDate}
           weekly={meta.weekly}
