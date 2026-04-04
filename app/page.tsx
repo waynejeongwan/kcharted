@@ -2,25 +2,20 @@ import Link from 'next/link'
 
 const CHARTS = [
   {
-    slug: 'spotify-global-top-50',
-    name: 'Spotify Global Top 50',
-    desc: '전 세계에서 가장 많이 재생된 곡',
-    color: 'from-green-500 to-emerald-700',
-    icon: '🎵',
-  },
-  {
-    slug: 'spotify-korea-top-50',
-    name: 'Spotify Korea Top 50',
-    desc: '한국에서 가장 많이 재생된 곡',
-    color: 'from-blue-500 to-indigo-700',
-    icon: '🎶',
-  },
-  {
     slug: 'billboard-hot-100',
     name: 'Billboard Hot 100',
     desc: '미국 최고 권위의 싱글 차트',
     color: 'from-red-500 to-rose-700',
     icon: '🔥',
+    href: '/charts/billboard-hot-100',
+  },
+  {
+    slug: 'kpop',
+    name: 'K-pop on Billboard Hot 100',
+    desc: '역대 Hot 100 K-pop 아티스트 순위 & 기록',
+    color: 'from-pink-500 to-rose-700',
+    icon: '🇰🇷',
+    href: '/kpop',
   },
   {
     slug: 'billboard-200',
@@ -28,6 +23,23 @@ const CHARTS = [
     desc: '미국 앨범 차트 Top 200',
     color: 'from-orange-500 to-amber-700',
     icon: '💿',
+    href: '/charts/billboard-200',
+  },
+  {
+    slug: 'spotify-global-top-50',
+    name: 'Spotify Global Top 50',
+    desc: '전 세계에서 가장 많이 재생된 곡',
+    color: 'from-green-500 to-emerald-700',
+    icon: '🎵',
+    href: '/charts/spotify-global-top-50',
+  },
+  {
+    slug: 'spotify-korea-top-50',
+    name: 'Spotify Korea Top 50',
+    desc: '한국에서 가장 많이 재생된 곡',
+    color: 'from-blue-500 to-indigo-700',
+    icon: '🎶',
+    href: '/charts/spotify-korea-top-50',
   },
 ]
 
@@ -45,7 +57,7 @@ export default function Home() {
         {CHARTS.map((chart) => (
           <Link
             key={chart.slug}
-            href={`/charts/${chart.slug}`}
+            href={chart.href}
             className="group relative overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900 p-6 hover:border-zinc-600 transition-all hover:-translate-y-0.5"
           >
             <div className={`absolute inset-0 opacity-5 group-hover:opacity-10 transition-opacity bg-gradient-to-br ${chart.color}`} />
@@ -59,23 +71,6 @@ export default function Home() {
             </div>
           </Link>
         ))}
-      </div>
-
-      {/* K-pop 통계 섹션 */}
-      <div className="mt-4">
-        <Link
-          href="/kpop"
-          className="group relative overflow-hidden rounded-2xl border border-zinc-700 bg-gradient-to-br from-zinc-900 to-zinc-800 p-6 hover:border-pink-500/50 transition-all hover:-translate-y-0.5 block"
-        >
-          <div className="flex items-center gap-4">
-            <span className="text-4xl">📊</span>
-            <div>
-              <h2 className="font-bold text-lg text-white">K-pop on Billboard Hot 100</h2>
-              <p className="text-zinc-400 text-sm mt-0.5">역사적 K-pop 차트 기록 & 통계</p>
-            </div>
-            <span className="ml-auto text-zinc-600 group-hover:text-pink-400 transition-colors text-xl">→</span>
-          </div>
-        </Link>
       </div>
 
       <p className="text-center text-zinc-600 text-sm mt-10">매일 오전 6시 업데이트</p>

@@ -1,42 +1,44 @@
-import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
-async function getKpopStats() {
-  // K-pop 아티스트별 Hot 100 진입 통계 (뷰 사용)
-  const { data: stats } = await supabase
-    .from('kpop_hot100_stats')
-    .select('*')
-    .limit(30)
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
-  // 최근 Hot 100에 오른 K-pop 곡 (최신 날짜 기준)
-  const { data: chart } = await supabase
-    .from('charts').select('id').eq('slug', 'billboard-hot-100').single()
+interface ArtistRanking {
+  artist: string
+  best_peak_rank: number
+  songs_at_peak: number
+  total_songs: number
+  top40_songs: number
+  total_weeks: number
+}
 
-  let recentKpop: any[] = []
-  if (chart) {
-    const { data: latest } = await supabase
-      .from('chart_entries').select('chart_date')
-      .eq('chart_id', chart.id)
-      .order('chart_date', { ascending: false })
-      .limit(1).single()
-
-    if (latest) {
-      const { data } = await supabase
-        .from('chart_entries')
-        .select(`rank, chart_date, tracks ( title, cover_url, artists ( name, is_kpop ) )`)
-        .eq('chart_id', chart.id)
-        .eq('chart_date', latest.chart_date)
-        .order('rank', { ascending: true })
-
-      recentKpop = (data ?? []).filter((e: any) => e.tracks?.artists?.is_kpop)
-    }
+async function getKpopRankings(): Promise<ArtistRanking[]> {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_kpop_hot100_rankings`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({}),
+      next: { revalidate: 3600 },
+    })
+    if (!res.ok) return []
+    const data = await res.json()
+    return Array.isArray(data) ? data : []
+  } catch {
+    return []
   }
+}
 
-  return { stats: stats ?? [], recentKpop }
+function peakDisplay(rank: number, count: number) {
+  const ordinal = rank === 1 ? '1위' : `${rank}위`
+  return count > 1 ? `${ordinal}×${count}곡` : `${ordinal}×1곡`
 }
 
 export default async function KpopPage() {
-  const { stats, recentKpop } = await getKpopStats()
+  const rankings = await getKpopRankings()
 
   return (
     <div className="max-w-3xl mx-auto px-6 py-12">
@@ -45,68 +47,81 @@ export default async function KpopPage() {
       </Link>
 
       <div className="mb-10">
-        <h1 className="text-3xl font-bold mb-2">🇰🇷 K-pop on Billboard</h1>
-        <p className="text-zinc-400">Billboard Hot 100 K-pop 역사적 기록 & 통계</p>
+        <h1 className="text-3xl font-bold mb-2">🇰🇷 K-pop on Billboard Hot 100</h1>
+        <p className="text-zinc-400">Billboard Hot 100 역대 K-pop 아티스트 종합 기록</p>
       </div>
 
-      {/* 최신 Hot 100 K-pop */}
-      {recentKpop.length > 0 && (
-        <section className="mb-12">
-          <h2 className="text-lg font-semibold mb-4 text-zinc-300">
-            이번 주 Hot 100 K-pop
-            <span className="ml-2 text-sm font-normal text-zinc-500">({recentKpop.length}곡)</span>
-          </h2>
-          <div className="space-y-1">
-            {recentKpop.map((e: any) => (
-              <div key={e.rank} className="flex items-center gap-4 px-4 py-3 rounded-xl hover:bg-zinc-900 transition-colors">
-                <span className="w-8 text-right text-zinc-500 font-mono text-sm shrink-0">{e.rank}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium text-white truncate">{e.tracks?.title}</p>
-                  <p className="text-zinc-500 text-sm">{e.tracks?.artists?.name}</p>
-                </div>
-                <span className="text-xs bg-pink-500/15 text-pink-400 px-2 py-0.5 rounded-full border border-pink-500/20">
-                  🇰🇷 K-pop
-                </span>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* 아티스트별 통계 */}
+      {/* 아티스트 순위 */}
       <section>
-        <h2 className="text-lg font-semibold mb-4 text-zinc-300">
-          Hot 100 K-pop 아티스트 순위
-          <span className="ml-2 text-sm font-normal text-zinc-500">역대 진입 횟수 기준</span>
-        </h2>
+        <div className="flex items-baseline gap-2 mb-4">
+          <h2 className="text-lg font-semibold text-zinc-300">
+            Billboard Hot 100 K-pop 역대 아티스트 순위
+          </h2>
+          <span className="text-xs text-zinc-500">최고순위 우선 · 동순위는 곡수 기준</span>
+        </div>
 
-        {stats.length === 0 ? (
+        {rankings.length === 0 ? (
           <div className="text-center py-16 text-zinc-600">
             <p className="text-4xl mb-3">📊</p>
-            <p>역사적 데이터 수집 중...</p>
-            <p className="text-sm mt-1">잠시 후 다시 확인해주세요</p>
+            <p>데이터 준비 중...</p>
+            <p className="text-xs mt-2 text-zinc-700">Supabase SQL Editor에서 get_kpop_hot100_rankings 함수를 실행해주세요</p>
           </div>
         ) : (
-          <div className="space-y-2">
-            {stats.map((s: any, i: number) => (
-              <div key={s.artist}
-                className="flex items-center gap-4 px-4 py-3 rounded-xl bg-zinc-900 hover:bg-zinc-800 transition-colors">
-                <span className="w-6 text-center text-zinc-500 font-bold text-sm shrink-0">
-                  {i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-white">{s.artist}</p>
-                  <p className="text-zinc-500 text-xs mt-0.5">
-                    최고 순위 #{s.peak_rank} · {s.unique_songs}곡 · {s.weeks_on_chart}주
-                  </p>
-                </div>
-                <div className="text-right shrink-0">
-                  <p className="text-pink-400 font-bold">{s.total_entries}</p>
-                  <p className="text-zinc-600 text-xs">진입 횟수</p>
-                </div>
+          <>
+            {/* 헤더 */}
+            <div className="grid grid-cols-[2rem_1fr_auto] gap-2 px-3 py-1.5 text-xs text-zinc-600 font-medium mb-1">
+              <span>#</span>
+              <span>아티스트</span>
+              <div className="flex gap-4 text-right">
+                <span className="w-16">최고순위</span>
+                <span className="w-12">Top100</span>
+                <span className="w-12">Top40</span>
+                <span className="w-12">총주수</span>
               </div>
-            ))}
-          </div>
+            </div>
+
+            <div className="space-y-1">
+              {rankings.map((s, i) => (
+                <div
+                  key={s.artist}
+                  className={`grid grid-cols-[2rem_1fr_auto] gap-2 items-center px-3 py-3 rounded-xl transition-colors
+                    ${i < 3 ? 'bg-zinc-900 border border-zinc-800' : 'hover:bg-zinc-900/60'}
+                  `}
+                >
+                  {/* 순위 번호 */}
+                  <span className={`text-center font-bold text-sm ${
+                    i === 0 ? 'text-yellow-400' :
+                    i === 1 ? 'text-zinc-300' :
+                    i === 2 ? 'text-amber-600' :
+                    'text-zinc-600'
+                  }`}>
+                    {i + 1}
+                  </span>
+
+                  {/* 아티스트명 */}
+                  <p className="font-semibold text-white truncate">{s.artist}</p>
+
+                  {/* 통계 */}
+                  <div className="flex gap-4 items-center text-right">
+                    <span className="w-16 text-pink-400 font-mono text-sm font-bold">
+                      {peakDisplay(s.best_peak_rank, s.songs_at_peak)}
+                    </span>
+                    <span className="w-12 text-zinc-300 font-mono text-sm">{s.total_songs}</span>
+                    <span className="w-12 text-zinc-400 font-mono text-sm">{s.top40_songs}</span>
+                    <span className="w-12 text-zinc-500 font-mono text-sm">{s.total_weeks}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex gap-4 text-xs text-zinc-600 px-3">
+              <span>최고순위: 해당 아티스트가 기록한 최고 차트 위치 (곡수 포함)</span>
+              <span>·</span>
+              <span>Top100/40: Hot 100 진입 곡수</span>
+              <span>·</span>
+              <span>총주수: 모든 곡의 차트 체류 주수 합계</span>
+            </div>
+          </>
         )}
       </section>
     </div>

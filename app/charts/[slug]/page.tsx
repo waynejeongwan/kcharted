@@ -1,7 +1,8 @@
-import { supabase } from '@/lib/supabase'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
+import { Suspense } from 'react'
 import DatePicker from './DatePicker'
+import ChartList from './ChartList'
 
 const CHART_META: Record<string, { name: string; icon: string; desc: string; weekly: boolean }> = {
   'spotify-global-top-50': { name: 'Spotify Global Top 50', icon: '🎵', desc: '글로벌 일간 차트', weekly: false },
@@ -10,29 +11,41 @@ const CHART_META: Record<string, { name: string; icon: string; desc: string; wee
   'billboard-200':         { name: 'Billboard 200',         icon: '💿', desc: '미국 주간 앨범 차트', weekly: true },
 }
 
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+
 type ChartDateRow = { chart_date: string; kpop_count: number }
 type ChartNavData = { dates: ChartDateRow[]; year_stats: Record<string, number> }
 
-async function getAvailableDates(chartId: string): Promise<ChartNavData> {
-  const { data } = await supabase.rpc('get_chart_dates', { p_chart_id: chartId })
+async function getChartId(slug: string): Promise<string | null> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/charts?slug=eq.${slug}&select=id&limit=1`,
+    {
+      headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+      next: { revalidate: 86400 },
+    }
+  )
+  const data = await res.json()
+  return data?.[0]?.id?.toString() ?? null
+}
+
+async function getAvailableDates(chartId: string, slug: string): Promise<ChartNavData> {
+  const res = await fetch(
+    `${SUPABASE_URL}/rest/v1/rpc/get_chart_dates`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: SUPABASE_KEY,
+        Authorization: `Bearer ${SUPABASE_KEY}`,
+      },
+      body: JSON.stringify({ p_chart_id: parseInt(chartId) }),
+      next: { revalidate: 3600, tags: [`chart-dates-${slug}`] },
+    }
+  )
+  const data = await res.json()
   if (!data) return { dates: [], year_stats: {} }
-  // returns json → data is array with one element
-  const result = Array.isArray(data) ? data[0] : data
-  return result as ChartNavData
-}
-
-async function getChartEntries(chartId: string, date: string) {
-  const { data: entries } = await supabase
-    .from('chart_entries')
-    .select(`rank, tracks ( title, cover_url, is_album, artists ( name, is_kpop ) )`)
-    .eq('chart_id', chartId)
-    .eq('chart_date', date)
-    .order('rank', { ascending: true })
-  return entries ?? []
-}
-
-function youtubeSearchUrl(title: string, artist: string) {
-  return `https://www.youtube.com/results?search_query=${encodeURIComponent(`${title} ${artist}`)}`
+  return data as ChartNavData
 }
 
 type Props = {
@@ -47,11 +60,10 @@ export default async function ChartPage({ params, searchParams }: Props) {
   const meta = CHART_META[slug]
   if (!meta) notFound()
 
-  const { data: chart } = await supabase
-    .from('charts').select('id').eq('slug', slug).single()
-  if (!chart) notFound()
+  const chartId = await getChartId(slug)
+  if (!chartId) notFound()
 
-  const { dates: availableDates, year_stats: yearStats } = await getAvailableDates(chart.id)
+  const { dates: availableDates, year_stats: yearStats } = await getAvailableDates(chartId, slug)
   if (availableDates.length === 0) {
     return (
       <div className="max-w-3xl mx-auto px-6 py-12">
@@ -63,13 +75,7 @@ export default async function ChartPage({ params, searchParams }: Props) {
   }
 
   const dateStrings = availableDates.map((r) => r.chart_date)
-
-  const selectedDate = dateParam && dateStrings.includes(dateParam)
-    ? dateParam
-    : dateStrings[0]
-
-  const entries = await getChartEntries(chart.id, selectedDate)
-  const kpopCount = entries.filter((e: any) => e.tracks?.artists?.is_kpop).length
+  const selectedDate = dateParam && dateStrings.includes(dateParam) ? dateParam : dateStrings[0]
 
   const currentIdx = dateStrings.indexOf(selectedDate)
   const prevDate = dateStrings[currentIdx + 1] ?? null
@@ -88,11 +94,6 @@ export default async function ChartPage({ params, searchParams }: Props) {
             <h1 className="text-2xl font-bold text-white">{meta.name}</h1>
             <p className="text-zinc-500 text-sm">{meta.desc}</p>
           </div>
-          {kpopCount > 0 && (
-            <span className="ml-auto text-xs bg-pink-500/15 text-pink-400 border border-pink-500/20 rounded-full px-3 py-1 font-medium">
-              K-POP {kpopCount}곡
-            </span>
-          )}
         </div>
 
         {/* 날짜 선택 */}
@@ -108,62 +109,20 @@ export default async function ChartPage({ params, searchParams }: Props) {
         />
       </div>
 
-      {/* 차트 리스트 */}
-      <div className="divide-y divide-zinc-800/60">
-        {entries.map((entry: any) => {
-          const track = entry.tracks
-          const artist = track?.artists
-          const isKpop = artist?.is_kpop
-          const ytUrl = youtubeSearchUrl(track?.title ?? '', artist?.name ?? '')
-
-          return (
-            <div
-              key={entry.rank}
-              className={`flex items-center gap-3 py-2 ${isKpop ? 'bg-pink-950/10' : ''}`}
-            >
-              {/* 순위 */}
-              <span className="w-7 text-right text-zinc-600 font-mono text-sm shrink-0 tabular-nums">
-                {entry.rank}
-              </span>
-
-              {/* 커버 이미지 */}
-              {track?.cover_url ? (
-                <img
-                  src={track.cover_url}
-                  alt={track.title}
-                  className="w-9 h-9 rounded-md object-cover shrink-0"
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-md bg-zinc-800 shrink-0 flex items-center justify-center text-zinc-600 text-base">
-                  {track?.is_album ? '💿' : '♪'}
-                </div>
-              )}
-
-              {/* 제목 + 아티스트 (한 줄) */}
-              <div className="min-w-0 flex-1 flex items-center gap-1.5 overflow-hidden">
-                <a
-                  href={ytUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="font-semibold text-white truncate shrink"
-                  title={`YouTube에서 검색: ${track?.title}`}
-                >
-                  {track?.title}
-                </a>
-                <span className="text-zinc-500 shrink-0">·</span>
-                <span className="text-zinc-300 text-sm truncate shrink">{artist?.name}</span>
-              </div>
-
-              {/* K-pop 배지 */}
-              {isKpop && (
-                <span className="shrink-0 text-xs bg-pink-500/15 text-pink-400 px-2 py-0.5 rounded-full border border-pink-500/20 font-medium">
-                  K-POP
-                </span>
-              )}
+      {/* 차트 리스트 - 클라이언트 컴포넌트로 독립 로딩 */}
+      <Suspense fallback={
+        <div className="divide-y divide-zinc-800/60">
+          {Array.from({ length: 20 }).map((_, i) => (
+            <div key={i} className="flex items-center gap-3 py-2">
+              <div className="w-7 h-4 bg-zinc-800 rounded animate-pulse shrink-0" />
+              <div className="w-9 h-9 bg-zinc-800 rounded-md animate-pulse shrink-0" />
+              <div className="flex-1 h-4 bg-zinc-800 rounded animate-pulse" />
             </div>
-          )
-        })}
-      </div>
+          ))}
+        </div>
+      }>
+        <ChartList chartId={chartId} defaultDate={selectedDate} />
+      </Suspense>
     </div>
   )
 }

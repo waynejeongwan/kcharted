@@ -102,7 +102,7 @@ export default function DatePicker({ slug, selectedDate, availableDates, dateStr
                         <button
                           key={year}
                           onClick={() => setSelectedYear(year)}
-                          className={`flex flex-col items-center py-2 px-1 rounded-lg transition-colors ${
+                          className={`relative py-2 px-1 rounded-lg transition-colors ${
                             isCurrentYear
                               ? 'bg-zinc-500 text-white'
                               : 'text-zinc-300 hover:bg-zinc-700'
@@ -110,7 +110,7 @@ export default function DatePicker({ slug, selectedDate, availableDates, dateStr
                         >
                           <span className="text-sm font-medium">{year}</span>
                           {kpopTotal > 0 && (
-                            <span className="text-xs text-pink-400 font-medium leading-tight">K {kpopTotal}</span>
+                            <span className="absolute -top-1 -right-1 text-[9px] text-pink-400 font-bold bg-zinc-900 rounded-full px-0.5 leading-tight">{kpopTotal}</span>
                           )}
                         </button>
                       )
@@ -136,7 +136,7 @@ export default function DatePicker({ slug, selectedDate, availableDates, dateStr
                         <button
                           key={row.chart_date}
                           onClick={() => goToDate(row.chart_date)}
-                          className={`flex flex-col items-center py-2 px-1 rounded-lg transition-colors ${
+                          className={`relative py-2 px-1 rounded-lg transition-colors ${
                             isSelected
                               ? 'bg-zinc-500 text-white font-bold'
                               : 'text-zinc-300 hover:bg-zinc-700'
@@ -145,7 +145,7 @@ export default function DatePicker({ slug, selectedDate, availableDates, dateStr
                         >
                           <span className="text-xs font-mono">{formatWeekLabel(row.chart_date)}</span>
                           {row.kpop_count > 0 && (
-                            <span className="text-xs text-pink-400 font-medium leading-tight">K {row.kpop_count}</span>
+                            <span className="absolute -top-1 -right-1 text-[9px] text-pink-400 font-bold bg-zinc-900 rounded-full px-0.5 leading-tight">{row.kpop_count}</span>
                           )}
                         </button>
                       )
