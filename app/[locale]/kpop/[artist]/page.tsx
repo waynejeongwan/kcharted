@@ -10,6 +10,7 @@ interface SongStat {
   title: string
   peak_rank: number
   total_weeks: number
+  score: number
   first_chart_date: string
   last_chart_date: string
 }
@@ -87,17 +88,19 @@ async function getArtistData(slug: string): Promise<ArtistData | null> {
         title: trackMap.get(tid) ?? '',
         peak_rank: e.rank,
         total_weeks: 1,
+        score: 101 - e.rank,
         first_chart_date: e.chart_date,
         last_chart_date: e.chart_date,
       }
     } else {
       if (e.rank < stats[tid].peak_rank) stats[tid].peak_rank = e.rank
       stats[tid].total_weeks += 1
+      stats[tid].score += 101 - e.rank
       if (e.chart_date > stats[tid].last_chart_date) stats[tid].last_chart_date = e.chart_date
     }
   }
 
-  const songs = Object.values(stats).sort((a, b) => a.peak_rank - b.peak_rank || b.total_weeks - a.total_weeks)
+  const songs = Object.values(stats).sort((a, b) => b.score - a.score || a.peak_rank - b.peak_rank)
   return { ...artist, songs }
 }
 
@@ -136,6 +139,7 @@ export default async function ArtistPage({ params }: Props) {
 
   const t = await getTranslations()
   const totalWeeks = data.songs.reduce((a, s) => a + s.total_weeks, 0)
+  const totalScore = data.songs.reduce((a, s) => a + s.score, 0)
   const bestPeak = data.songs.length > 0 ? data.songs[0].peak_rank : null
   const dateLocale = locale === 'ko' ? 'ko-KR' : 'en-US'
 
@@ -183,6 +187,10 @@ export default async function ArtistPage({ params }: Props) {
             <span className="text-zinc-400">
               {locale === 'ko' ? `총 ${totalWeeks}주` : `${totalWeeks} total weeks`}
             </span>
+            <span className="text-zinc-400">
+              {locale === 'ko' ? '총점 ' : 'Score '}
+              <span className="text-pink-300 font-bold">{totalScore.toLocaleString()}</span>
+            </span>
           </div>
         )}
       </div>
@@ -191,18 +199,20 @@ export default async function ArtistPage({ params }: Props) {
         <p className="text-zinc-600">{t('chart.noData')}</p>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-          <div className="grid grid-cols-[1fr_4rem_5rem_auto] gap-2 px-5 py-3 text-xs text-zinc-600 font-medium border-b border-zinc-800">
+          <div className="grid grid-cols-[1fr_4rem_4rem_5rem_auto] gap-2 px-5 py-3 text-xs text-zinc-600 font-medium border-b border-zinc-800">
             <span>{locale === 'ko' ? '곡명' : 'Title'}</span>
             <span className="text-center">{locale === 'ko' ? '최고순위' : 'Peak'}</span>
-            <span className="text-center">Total Wks</span>
+            <span className="text-center">{locale === 'ko' ? '주수' : 'Wks'}</span>
+            <span className="text-right">{locale === 'ko' ? '점수' : 'Score'}</span>
             <span className="text-right">{locale === 'ko' ? '첫 진입일' : 'First Entry'}</span>
           </div>
           <div className="divide-y divide-zinc-800/50">
             {data.songs.map((s, i) => (
-              <div key={i} className="grid grid-cols-[1fr_4rem_5rem_auto] gap-2 items-center px-5 py-3">
+              <div key={i} className="grid grid-cols-[1fr_4rem_4rem_5rem_auto] gap-2 items-center px-5 py-3">
                 <span className="text-sm text-white font-medium leading-snug">{s.title}</span>
                 <span className={`text-sm font-mono text-center ${rankBadge(s.peak_rank)}`}>#{s.peak_rank}</span>
-                <span className="text-sm font-mono text-zinc-400 text-center">{s.total_weeks}{locale === 'ko' ? '주' : 'wks'}</span>
+                <span className="text-sm font-mono text-zinc-400 text-center">{s.total_weeks}{locale === 'ko' ? '주' : ''}</span>
+                <span className="text-sm font-mono text-zinc-300 font-semibold text-right">{s.score.toLocaleString()}</span>
                 <span className="text-xs text-zinc-500 text-right whitespace-nowrap">{formatDate(s.first_chart_date)}</span>
               </div>
             ))}

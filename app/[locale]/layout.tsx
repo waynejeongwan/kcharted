@@ -6,7 +6,7 @@ import { getMessages, getTranslations } from 'next-intl/server'
 import { notFound } from 'next/navigation'
 import { routing } from '@/i18n/routing'
 import PageTracker from '@/components/PageTracker'
-import LocaleSwitcher from '@/components/LocaleSwitcher'
+import SidebarShell from '@/components/SidebarShell'
 import '../globals.css'
 
 const inter = Inter({ subsets: ['latin'] })
@@ -74,24 +74,14 @@ export default async function LocaleLayout({
     <html lang={locale} style={{ backgroundColor: '#09090b' }}>
       <body
         className={inter.className}
-        style={{ backgroundColor: '#09090b', color: '#fafafa', minHeight: '100vh', margin: 0 }}
+        style={{ backgroundColor: '#09090b', color: '#fafafa', margin: 0 }}
       >
         <NextIntlClientProvider messages={messages}>
-          <header className="border-b border-zinc-800 px-6 py-4 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <a href={`/${locale}`} className="text-xl font-bold tracking-tight" style={{ color: '#fafafa' }}>
-                K-charted
-              </a>
-              <span className="text-zinc-500 text-xs mt-0.5">K-pop × Global Charts</span>
-            </div>
-            <LocaleSwitcher />
-          </header>
-          <PageTracker />
-          <main>{children}</main>
+          <SidebarShell locale={locale}>
+            <PageTracker />
+            {children}
+          </SidebarShell>
           <Analytics />
-          <footer className="border-t border-zinc-800 px-6 py-6 text-center text-zinc-500 text-sm mt-16">
-            © {new Date().getFullYear()} kcharted · Data from Spotify, Billboard, Melon
-          </footer>
         </NextIntlClientProvider>
       </body>
     </html>

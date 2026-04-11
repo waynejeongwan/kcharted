@@ -60,6 +60,7 @@ NON_KPOP_NAMES = {
     "suppasit jongcheveevat", "bryan chase", "mayzin", "colde",
     "paul blanco", "sokodomo", "jibin", "sam kim", "giriboy",
     "peakboy", "beenzino", "taeyang feat. beenzino",
+    "kali uchis", "amber",  # 동명이인: K-pop Amber Liu와 별개 서양 아티스트 존재
 }
 
 

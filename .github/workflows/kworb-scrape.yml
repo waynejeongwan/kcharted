@@ -1,0 +1,61 @@
+name: K-pop Spotify 스트리밍 수집 (kworb)
+
+on:
+  schedule:
+    # 매일 오전 7시 KST = 22:00 UTC (전일)
+    - cron: '0 22 * * *'
+  workflow_dispatch:
+    inputs:
+      milestones:
+        description: '마일스톤 수집 여부 (true/false)'
+        required: false
+        default: 'false'
+      top:
+        description: '마일스톤 수집 상위 N개 (0=전체)'
+        required: false
+        default: '0'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4
+
+      - name: Run daily scrape (streams only)
+        if: github.event_name == 'schedule' || github.event.inputs.milestones == 'false'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python scripts/kworb_scrape.py
+
+      - name: Run with milestones (manual only)
+        if: github.event.inputs.milestones == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          TOP="${{ github.event.inputs.top }}"
+          if [ "$TOP" = "0" ]; then
+            python scripts/kworb_scrape.py --milestones
+          else
+            python scripts/kworb_scrape.py --milestones --top $TOP
+          fi
+
+      - name: Summary
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import os, datetime
+          today = datetime.date.today().strftime("%Y-%m-%d")
+          run_url = f"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          summary = f"## K-pop 스트리밍 수집 — {today}\n\n[Actions 상세]({run_url})\n"
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(summary)
+          EOF

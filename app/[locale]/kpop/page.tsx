@@ -28,6 +28,7 @@ export interface ArtistRanking {
   total_songs: number
   top40_songs: number
   total_weeks: number
+  total_score: number
 }
 
 async function getKpopRankings(): Promise<ArtistRanking[]> {

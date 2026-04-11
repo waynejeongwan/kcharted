@@ -1,9 +1,7 @@
 'use client'
 
-import { useState } from 'react'
 import { useTranslations, useLocale } from 'next-intl'
 import { Link } from '@/navigation'
-import ArtistModal from './ArtistModal'
 import type { ArtistRanking } from './page'
 
 function artistSlug(name: string) {
@@ -20,7 +18,6 @@ function peakDisplay(rank: number, count: number, locale: string) {
 export default function KpopRankingsClient({ rankings }: { rankings: ArtistRanking[] }) {
   const t = useTranslations('kpop')
   const locale = useLocale()
-  const [selected, setSelected] = useState<ArtistRanking | null>(null)
 
   if (rankings.length === 0) {
     return (
@@ -42,25 +39,27 @@ export default function KpopRankingsClient({ rankings }: { rankings: ArtistRanki
         </h2>
         <div className="flex items-baseline gap-3 text-xs">
           <span>
-            <span className="font-mono text-orange-400 text-sm">{totalSongs.toLocaleString()}</span>
+            <span className="font-mono text-pink-400 text-sm">{totalSongs.toLocaleString()}</span>
             <span className="text-zinc-500 ml-1">{locale === 'ko' ? '곡' : 'songs'}</span>
           </span>
           <span className="text-zinc-700">/</span>
           <span>
-            <span className="font-mono text-orange-400 text-sm">{totalArtists}</span>
+            <span className="font-mono text-pink-400 text-sm">{totalArtists}</span>
             <span className="text-zinc-500 ml-1">{locale === 'ko' ? '아티스트' : 'artists'}</span>
           </span>
         </div>
         <span className="text-xs text-zinc-600 hidden sm:inline">
           {locale === 'ko'
-            ? '최고순위 우선 · 동순위는 곡수 기준 · 아티스트 클릭 시 상세'
-            : 'Sorted by peak rank · Click artist for details'}
+            ? '점수순 · 아티스트 클릭 시 상세'
+            : 'Sorted by score · Click artist for details'}
         </span>
       </div>
 
-      <div className="hidden sm:grid grid-cols-[2.5rem_1fr_7rem_5rem_5rem_6rem] gap-2 px-3 py-1.5 text-xs text-zinc-600 font-medium mb-1">
-        <span>#</span>
+      {/* 헤더: # | Artist | Score | Peak | Songs | Top40 | Weeks */}
+      <div className="hidden sm:grid grid-cols-[2.5rem_1fr_7rem_7rem_5rem_5rem_6rem] gap-2 px-3 py-1.5 text-xs text-zinc-600 font-medium mb-1">
+        <span className="text-center">#</span>
         <span>{t('columns.artist')}</span>
+        <span className="text-right">{locale === 'ko' ? '점수' : 'Score'}</span>
         <span className="text-right">{t('columns.peakRank')}</span>
         <span className="text-right">{t('columns.songs')}</span>
         <span className="text-right">{t('columns.top40')}</span>
@@ -75,22 +74,21 @@ export default function KpopRankingsClient({ rankings }: { rankings: ArtistRanki
               ${i < 3 ? 'bg-zinc-900 border border-zinc-800 hover:border-zinc-600' : 'hover:bg-zinc-900/60'}
             `}
           >
-            <div className="hidden sm:grid grid-cols-[2.5rem_1fr_7rem_5rem_5rem_6rem_2rem] gap-2 items-center px-3 py-3">
+            <div className="hidden sm:grid grid-cols-[2.5rem_1fr_7rem_7rem_5rem_5rem_6rem] gap-2 items-center px-3 py-3">
               <span className={`text-center font-bold text-sm ${
                 i === 0 ? 'text-yellow-400' :
                 i === 1 ? 'text-zinc-300' :
                 i === 2 ? 'text-amber-600' : 'text-zinc-600'
               }`}>{i + 1}</span>
-              <button onClick={() => setSelected(s)} className="font-semibold text-white text-left hover:text-pink-300 transition-colors">{s.artist}</button>
-              <span className="text-pink-400 font-mono text-sm font-bold text-right">{peakDisplay(s.best_peak_rank, s.songs_at_peak, locale)}</span>
-              <span className="text-zinc-300 font-mono text-sm text-right">{s.total_songs}</span>
-              <span className="text-zinc-400 font-mono text-sm text-right">{s.top40_songs}</span>
-              <span className="text-zinc-500 font-mono text-sm text-right">{s.total_weeks}</span>
               <Link
                 href={`/kpop/${artistSlug(s.artist)}` as '/kpop/[artist]'}
-                className="text-zinc-600 hover:text-white transition-colors text-sm text-right"
-                title={locale === 'ko' ? '상세 페이지' : 'Detail page'}
-              >↗</Link>
+                className="font-semibold text-white hover:text-pink-300 transition-colors"
+              >{s.artist}</Link>
+              <span className="text-sky-400 font-mono text-sm font-bold text-right">{s.total_score?.toLocaleString() ?? '-'}</span>
+              <span className="text-white font-mono text-sm text-right">{peakDisplay(s.best_peak_rank, s.songs_at_peak, locale)}</span>
+              <span className="text-zinc-400 font-mono text-sm text-right">{s.total_songs}</span>
+              <span className="text-zinc-400 font-mono text-sm text-right">{s.top40_songs}</span>
+              <span className="text-zinc-500 font-mono text-sm text-right">{s.total_weeks}</span>
             </div>
 
             <div className="sm:hidden flex items-center gap-3 px-3 py-3">
@@ -99,32 +97,23 @@ export default function KpopRankingsClient({ rankings }: { rankings: ArtistRanki
                 i === 1 ? 'text-zinc-300' :
                 i === 2 ? 'text-amber-600' : 'text-zinc-600'
               }`}>{i + 1}</span>
-              <button onClick={() => setSelected(s)} className="flex-1 min-w-0 text-left">
-                <p className="font-semibold text-white text-sm leading-snug">{s.artist}</p>
-                <p className="text-xs text-zinc-500 mt-0.5">
-                  <span className="text-pink-400 font-medium">{peakDisplay(s.best_peak_rank, s.songs_at_peak, locale)}</span>
-                  <span className="mx-1">·</span>
-                  {locale === 'ko' ? `${s.total_songs}곡` : `${s.total_songs} songs`}
-                  <span className="mx-1">·</span>
-                  {locale === 'ko' ? `${s.total_weeks}주` : `${s.total_weeks} wks`}
-                </p>
-              </button>
               <Link
                 href={`/kpop/${artistSlug(s.artist)}` as '/kpop/[artist]'}
-                className="text-zinc-600 hover:text-white transition-colors shrink-0"
-              >↗</Link>
+                className="flex-1 min-w-0"
+              >
+                <p className="font-semibold text-white text-sm leading-snug hover:text-pink-300 transition-colors">{s.artist}</p>
+                <p className="text-xs text-zinc-500 mt-0.5">
+                  <span className="text-sky-400 font-medium">{s.total_score?.toLocaleString() ?? '-'}{locale === 'ko' ? '점' : 'pts'}</span>
+                  <span className="mx-1">·</span>
+                  <span className="text-zinc-400">{peakDisplay(s.best_peak_rank, s.songs_at_peak, locale)}</span>
+                  <span className="mx-1">·</span>
+                  {locale === 'ko' ? `${s.total_songs}곡` : `${s.total_songs} songs`}
+                </p>
+              </Link>
             </div>
           </div>
         ))}
       </div>
-
-      {selected && (
-        <ArtistModal
-          artistId={selected.artist_id}
-          artistName={selected.artist}
-          onClose={() => setSelected(null)}
-        />
-      )}
     </>
   )
 }
