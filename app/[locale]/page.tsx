@@ -196,7 +196,38 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
           </ol>
         </section>
 
-        {/* ② Latest Billboard Hot 100 */}
+        {/* ② K-pop Albums Rankings */}
+        <section className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
+            <div>
+              <p className="text-xs text-orange-400 font-semibold uppercase tracking-wide">💿 Billboard 200</p>
+              <h2 className="text-sm font-bold text-white">
+                {ko ? 'K-pop 역대 앨범 랭킹' : 'K-pop All-Time Album Rankings'}
+              </h2>
+            </div>
+            <Link href="/kpop-albums" className="text-xs text-zinc-500 hover:text-white transition-colors">
+              {ko ? '전체 보기 →' : 'View all →'}
+            </Link>
+          </div>
+          <ol className="divide-y divide-zinc-800/60">
+            {kpopAlbums.length === 0 ? (
+              <li className="px-4 py-6 text-center text-zinc-600 text-sm">{ko ? '데이터 없음' : 'No data'}</li>
+            ) : kpopAlbums.map((r, i) => (
+              <li key={r.artist} className="flex items-center gap-3 px-4 py-2.5">
+                <span className={`w-5 text-center font-bold text-sm shrink-0 ${
+                  i === 0 ? 'text-yellow-400' : i === 1 ? 'text-zinc-300' : i === 2 ? 'text-amber-600' : 'text-zinc-600'
+                }`}>{i + 1}</span>
+                <Link
+                  href={`/kpop-albums/${encodeURIComponent(r.artist.toLowerCase().replace(/\s+/g, '-'))}` as '/kpop-albums/[artist]'}
+                  className="flex-1 text-sm text-white font-medium hover:text-orange-300 transition-colors truncate"
+                >{r.artist}</Link>
+                <span className="text-xs text-sky-400 font-mono font-semibold shrink-0">{r.total_score?.toLocaleString()}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* ③ Latest Billboard Hot 100 */}
         <section className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
             <div>
@@ -223,37 +254,6 @@ export default async function Home({ params }: { params: Promise<{ locale: strin
                     {r.is_kpop && <span className="mr-1">🇰🇷</span>}{r.artist}
                   </p>
                 </div>
-              </li>
-            ))}
-          </ol>
-        </section>
-
-        {/* ③ K-pop Albums Rankings */}
-        <section className="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800">
-            <div>
-              <p className="text-xs text-orange-400 font-semibold uppercase tracking-wide">💿 Billboard 200</p>
-              <h2 className="text-sm font-bold text-white">
-                {ko ? 'K-pop 역대 앨범 랭킹' : 'K-pop All-Time Album Rankings'}
-              </h2>
-            </div>
-            <Link href="/kpop-albums" className="text-xs text-zinc-500 hover:text-white transition-colors">
-              {ko ? '전체 보기 →' : 'View all →'}
-            </Link>
-          </div>
-          <ol className="divide-y divide-zinc-800/60">
-            {kpopAlbums.length === 0 ? (
-              <li className="px-4 py-6 text-center text-zinc-600 text-sm">{ko ? '데이터 없음' : 'No data'}</li>
-            ) : kpopAlbums.map((r, i) => (
-              <li key={r.artist} className="flex items-center gap-3 px-4 py-2.5">
-                <span className={`w-5 text-center font-bold text-sm shrink-0 ${
-                  i === 0 ? 'text-yellow-400' : i === 1 ? 'text-zinc-300' : i === 2 ? 'text-amber-600' : 'text-zinc-600'
-                }`}>{i + 1}</span>
-                <Link
-                  href={`/kpop-albums/${encodeURIComponent(r.artist.toLowerCase().replace(/\s+/g, '-'))}` as '/kpop-albums/[artist]'}
-                  className="flex-1 text-sm text-white font-medium hover:text-orange-300 transition-colors truncate"
-                >{r.artist}</Link>
-                <span className="text-xs text-sky-400 font-mono font-semibold shrink-0">{r.total_score?.toLocaleString()}</span>
               </li>
             ))}
           </ol>
