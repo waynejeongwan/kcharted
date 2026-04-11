@@ -1,0 +1,49 @@
+{
+  "common": {
+    "siteTitle": "K-charted",
+    "tagline": "K-pop × 글로벌 차트",
+    "catchphrase": "K-pop의 글로벌 차트 기록을 한 곳에서.",
+    "updatedDaily": "매일 오전 6시 업데이트",
+    "footerText": "데이터 출처: Spotify, Billboard, Melon",
+    "backToCharts": "← 전체 차트"
+  },
+  "home": {
+    "charts": {
+      "hot100Name": "Billboard Hot 100 x K-pop",
+      "hot100Desc": "미국 최고 권위의 싱글 차트",
+      "kpopRankingsName": "K-pop의 Hot 100 역대 순위",
+      "kpopRankingsDesc": "Hot 100 K-pop 아티스트 역대 순위 & 기록",
+      "billboard200Name": "Billboard 200 x K-pop",
+      "billboard200Desc": "미국 앨범 차트 Top 200",
+      "kpopAlbumsName": "K-pop의 Billboard 200 역대 순위",
+      "kpopAlbumsDesc": "Billboard 200 K-pop 아티스트 역대 앨범 순위 & 기록",
+      "spotifyGlobalName": "Spotify 글로벌 Top 50",
+      "spotifyGlobalDesc": "전 세계에서 가장 많이 재생된 곡",
+      "spotifyKoreaName": "Spotify 코리아 Top 50",
+      "spotifyKoreaDesc": "한국에서 가장 많이 재생된 곡"
+    }
+  },
+  "chart": {
+    "spotifyGlobalDesc": "글로벌 일간 차트",
+    "spotifyKoreaDesc": "한국 일간 차트",
+    "hot100Desc": "미국 주간 싱글 차트",
+    "billboard200Desc": "미국 주간 앨범 차트",
+    "noData": "아직 데이터가 없습니다.",
+    "kpopCount": "이번 주 K-pop {count}곡 차트인 🇰🇷"
+  },
+  "kpopAlbums": {
+    "title": "K-pop on Billboard 200",
+    "subtitle": "Billboard 200 역대 K-pop 아티스트 종합 앨범 기록"
+  },
+  "kpop": {
+    "title": "K-pop on Billboard Hot 100",
+    "subtitle": "Billboard Hot 100 역대 K-pop 아티스트 종합 기록",
+    "columns": {
+      "artist": "아티스트",
+      "peakRank": "최고 순위",
+      "songs": "곡 수",
+      "top40": "Top 40",
+      "weeks": "총 주수"
+    }
+  }
+}

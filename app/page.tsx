@@ -26,6 +26,14 @@ const CHARTS = [
     href: '/charts/billboard-200',
   },
   {
+    slug: 'kpop-albums',
+    name: 'K-pop on Billboard 200',
+    desc: 'Billboard 200 K-pop 아티스트 역대 앨범 순위 & 기록',
+    color: 'from-orange-400 to-pink-600',
+    icon: '🇰🇷',
+    href: '/kpop-albums',
+  },
+  {
     slug: 'spotify-global-top-50',
     name: 'Spotify Global Top 50',
     desc: '전 세계에서 가장 많이 재생된 곡',
@@ -49,7 +57,7 @@ export default function Home() {
       <div className="mb-12 text-center">
         <h1 className="text-5xl font-bold mb-4 tracking-tight">🎵 kcharted</h1>
         <p className="text-zinc-400 text-lg">
-          Billboard, Spotify, Melon — 글로벌 음원 차트를 한 곳에서
+          Where K-pop meets the world's biggest charts.
         </p>
       </div>
 

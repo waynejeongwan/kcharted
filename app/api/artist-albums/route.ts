@@ -8,10 +8,10 @@ export async function GET(request: NextRequest) {
   if (!artistId || artistId === 'undefined') return NextResponse.json([])
 
   const { data: chart } = await supabase
-    .from('charts').select('id').eq('slug', 'billboard-hot-100').single()
+    .from('charts').select('id').eq('slug', 'billboard-200').single()
   if (!chart) return NextResponse.json([])
 
-  // canonical 포함 - 해당 아티스트 본인 + canonical_artist_id가 이 아티스트인 파생 아티스트
+  // canonical 포함 - 본인 + 파생 아티스트 모두
   const { data: allArtists } = await supabase
     .from('artists')
     .select('id')
@@ -22,8 +22,9 @@ export async function GET(request: NextRequest) {
 
   const { data: tracks } = await supabase
     .from('tracks')
-    .select('id, title')
+    .select('id, title, cover_url')
     .in('artist_id', artistIds)
+    .eq('is_album', true)
   if (!tracks || tracks.length === 0) return NextResponse.json([])
 
   const trackIds = tracks.map((t) => t.id)
@@ -44,16 +45,25 @@ export async function GET(request: NextRequest) {
     if (page.length < PAGE) break
     from += PAGE
   }
-  if (allEntries.length === 0) return NextResponse.json([])
+  const entries = allEntries
+  if (entries.length === 0) return NextResponse.json([])
 
-  const trackMap = new Map(tracks.map((t) => [t.id, t.title]))
-  const stats: Record<number, { title: string; peak_rank: number; total_weeks: number; first_chart_date: string; last_chart_date: string }> = {}
+  const trackMap = new Map(tracks.map((t) => [t.id, { title: t.title, cover_url: t.cover_url }]))
+  const stats: Record<number, {
+    title: string
+    cover_url: string | null
+    peak_rank: number
+    total_weeks: number
+    first_chart_date: string
+    last_chart_date: string
+  }> = {}
 
-  for (const e of allEntries) {
+  for (const e of entries) {
     const tid = e.track_id
     if (!stats[tid]) {
       stats[tid] = {
-        title: trackMap.get(tid) ?? '',
+        title: trackMap.get(tid)?.title ?? '',
+        cover_url: trackMap.get(tid)?.cover_url ?? null,
         peak_rank: e.rank,
         total_weeks: 1,
         first_chart_date: e.chart_date,

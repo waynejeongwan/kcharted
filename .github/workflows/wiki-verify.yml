@@ -1,0 +1,139 @@
+name: Wiki vs kcharted 정합성 검증
+
+on:
+  schedule:
+    # 매주 수요일 오전 9시 (KST) = 화요일 00:00 UTC
+    # 주간 차트 업데이트(화요일) 다음날 검증
+    - cron: '0 0 * * 3'
+  workflow_dispatch: # 수동 실행 가능
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run verification
+        id: verify
+        run: |
+          python scripts/wiki_verify.py --json 2>&1 | tee verify_output.txt
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+        continue-on-error: true
+
+      - name: Upload result
+        uses: actions/upload-artifact@v4
+        with:
+          name: wiki-verify-result
+          path: wiki_verify_result.json
+          if-no-files-found: ignore
+
+      - name: Build report
+        id: report
+        run: |
+          python3 - <<'EOF'
+          import json, os, datetime
+
+          today = datetime.date.today().strftime("%Y-%m-%d")
+          run_url = f"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          try:
+              with open("verify_output.txt") as f:
+                  raw = f.read()
+          except:
+              raw = "(출력 없음)"
+
+          try:
+              with open("wiki_verify_result.json") as f:
+                  data = json.load(f)
+              album_issues = data.get("albums", [])
+              song_issues  = data.get("songs", [])
+              total = len(album_issues) + len(song_issues)
+          except:
+              album_issues, song_issues, total = [], [], -1
+
+          status = "✅ 이상 없음" if total == 0 else f"⚠️ {total}건 불일치 발견"
+
+          # GitHub Step Summary
+          summary_lines = [
+              f"## Wikipedia vs kcharted 정합성 검증 — {today}",
+              f"",
+              f"**결과: {status}**",
+              f"",
+              f"[Actions 상세 보기]({run_url})",
+              f"",
+              "### 상세 출력",
+              "```",
+              raw.strip(),
+              "```",
+          ]
+          summary = "\n".join(summary_lines)
+
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+              f.write(summary)
+
+          # 이메일 본문 (plain text)
+          email_lines = [
+              f"[kcharted] Wikipedia 정합성 검증 보고서 — {today}",
+              f"결과: {status}",
+              f"",
+          ]
+
+          def fmt_issues(issues, kind):
+              if not issues:
+                  return f"  ✅ {kind}: 불일치 없음\n"
+              lines = [f"  ⚠️ {kind} ({len(issues)}건):"]
+              for i in issues:
+                  if i["type"] == "MISSING_IN_KCHARTED":
+                      cnt = i.get("wiki_albums") or i.get("wiki_songs", "?")
+                      lines.append(f"    - 누락: {i['artist']} | wiki peak #{i['wiki_peak']} | {cnt}건")
+                  elif i["type"] == "PEAK_MISMATCH":
+                      lines.append(f"    - Peak 불일치: {i['artist']} | kcharted #{i['kcharted_peak']} vs wiki #{i['wiki_peak']}")
+              return "\n".join(lines) + "\n"
+
+          email_lines.append(fmt_issues(album_issues, "Billboard 200 Albums"))
+          email_lines.append(fmt_issues(song_issues, "Hot 100 Songs"))
+          email_lines.append(f"\nActions 상세: {run_url}")
+
+          email_body = "\n".join(email_lines)
+
+          with open("email_body.txt", "w") as f:
+              f.write(email_body)
+
+          # subject 저장
+          subject = f"[kcharted] 정합성 검증 {status} — {today}"
+          with open("email_subject.txt", "w") as f:
+              f.write(subject)
+
+          print(email_body)
+          EOF
+
+      - name: Send email report
+        run: |
+          SUBJECT=$(cat email_subject.txt)
+          echo "EMAIL_SUBJECT=$SUBJECT" >> $GITHUB_ENV
+
+      - name: Send email report (mail)
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.MAIL_USERNAME }}
+          password: ${{ secrets.MAIL_PASSWORD }}
+          subject: ${{ env.EMAIL_SUBJECT }}
+          body: file://email_body.txt
+          to: jeongwan@gmail.com
+          from: kcharted bot <${{ secrets.MAIL_USERNAME }}>
+
+      - name: Fail if issues found
+        if: steps.verify.outputs.exit_code != '0'
+        run: |
+          echo "불일치가 발견되었습니다. Actions Summary를 확인하세요."
+          exit 1

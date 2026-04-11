@@ -1,22 +1,23 @@
 """
-kcharted - Billboard 차트 수집 스크립트 (GitHub Actions용)
-Billboard Hot 100 / Billboard 200 → Supabase 저장
+kcharted - Billboard 200 히스토리컬 데이터 백필 스크립트
+2010년 1월 ~ 2019년 12월 주간 차트를 Supabase에 저장
 """
 
 import os
+import sys
 import time
 import requests
 import billboard
-from datetime import date
+from datetime import date, timedelta
 
 # ── 설정 (환경변수) ────────────────────────────────────
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+#SUPABASE_URL = os.environ["SUPABASE_URL"]
+#SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+SUPABASE_URL = "https://hqoovxivfabnwfdjnuvs.supabase.co"
+SUPABASE_KEY = "sb_publishable_CrRpudFHAa2Sh5SlckI8tA_njNc-ju0"
 
-CHARTS = {
-    "billboard-hot-100": "hot-100",
-    "billboard-200":     "billboard-200",
-}
+BB_CHART_NAME = "billboard-200"
+CHART_SLUG    = "billboard-200"
 
 HEADERS_SB = {
     "apikey": SUPABASE_KEY,
@@ -54,7 +55,6 @@ def sb_upsert(table, data, on_conflict, retries=5):
 SEPARATORS = (" Featuring ", " featuring ", " feat. ", " Feat. ", " & ", " x ", " X ")
 
 def find_kpop_canonical(name):
-    """이름에서 K-pop 메인 아티스트를 찾아 (canonical_id, is_kpop) 반환"""
     for sep in SEPARATORS:
         if sep in name:
             parts = [p.strip() for p in name.split(sep)]
@@ -72,7 +72,6 @@ def upsert_artist(name):
         return existing[0]["id"]
 
     canon_id, inherited_kpop = find_kpop_canonical(name)
-
     payload = {"name": name}
     if inherited_kpop:
         payload["is_kpop"] = True
@@ -81,11 +80,10 @@ def upsert_artist(name):
 
     return sb_post("artists", payload)[0]["id"]
 
-def upsert_track(title, artist_id, is_album=False):
+def upsert_track(title, artist_id, is_album=True):
     existing = sb_get("tracks", {"title": f"ilike.{title}", "artist_id": f"eq.{artist_id}", "select": "id,is_album"})
     if existing:
         track_id = existing[0]["id"]
-        # is_album=True로 업그레이드가 필요한 경우 업데이트
         if is_album and not existing[0].get("is_album"):
             requests.patch(f"{SUPABASE_URL}/rest/v1/tracks",
                            headers={**HEADERS_SB, "Prefer": "return=minimal"},
@@ -100,36 +98,93 @@ def get_chart_id(slug):
         raise ValueError(f"charts 테이블에 slug='{slug}' 없음")
     return rows[0]["id"]
 
-def upsert_chart_entry(chart_id, track_id, rank, chart_date):
-    sb_upsert("chart_entries", {
-        "chart_id": chart_id, "track_id": track_id,
-        "rank": rank, "chart_date": str(chart_date),
-    }, "chart_id,chart_date,rank")
+def date_already_stored(chart_id, chart_date_str):
+    """해당 날짜의 데이터가 이미 DB에 있는지 확인 (rank=1 체크)"""
+    rows = sb_get("chart_entries", {
+        "chart_id": f"eq.{chart_id}",
+        "chart_date": f"eq.{chart_date_str}",
+        "rank": "eq.1",
+        "select": "id",
+    })
+    return len(rows) > 0
+
+# ── 주간 날짜 생성 ────────────────────────────────────
+def weekly_dates(start: date, end: date):
+    """start부터 end까지 7일 간격 날짜 리스트 반환"""
+    dates = []
+    current = start
+    while current <= end:
+        dates.append(current)
+        current += timedelta(weeks=1)
+    return dates
 
 # ── 메인 ──────────────────────────────────────────────
-def collect(chart_date=None):
-    print(f"[kcharted] Billboard 차트 수집 시작 ({chart_date or '최신'})\n")
-    for slug, bb_name in CHARTS.items():
-        print(f"📊 {slug} 수집 중...")
+def backfill(start_date: date, end_date: date, delay: float = 3.0, skip_existing: bool = True):
+    chart_id = get_chart_id(CHART_SLUG)
+    weeks = weekly_dates(start_date, end_date)
+    total = len(weeks)
+
+    print(f"[kcharted] Billboard 200 백필 시작")
+    print(f"  기간: {start_date} ~ {end_date}")
+    print(f"  총 {total}주 처리 예정\n")
+
+    seen_dates = set()  # billboard API가 반환하는 실제 날짜 기준 중복 방지
+    success = 0
+    skipped = 0
+    failed = 0
+
+    for i, query_date in enumerate(weeks, 1):
+        print(f"[{i:3}/{total}] 요청 날짜: {query_date}", end=" ... ", flush=True)
+
         try:
-            chart = billboard.ChartData(bb_name, date=chart_date)
+            chart = billboard.ChartData(BB_CHART_NAME, date=str(query_date))
         except Exception as e:
-            print(f"  ❌ 수집 실패: {e}")
+            print(f"❌ 수집 실패: {e}")
+            failed += 1
+            time.sleep(delay)
             continue
 
-        chart_date_actual = str(chart.date) if chart.date else str(date.today())
-        chart_id = get_chart_id(slug)
-        is_album = (bb_name == "billboard-200")
+        actual_date = str(chart.date) if chart.date else str(query_date)
+
+        if actual_date in seen_dates:
+            print(f"건너뜀 (중복 날짜 {actual_date})")
+            skipped += 1
+            time.sleep(delay)
+            continue
+        seen_dates.add(actual_date)
+
+        if skip_existing and date_already_stored(chart_id, actual_date):
+            print(f"건너뜀 (이미 저장됨 {actual_date})")
+            skipped += 1
+            time.sleep(delay)
+            continue
+
+        print(f"저장 중 ({actual_date}, {len(chart)}곡)")
 
         for entry in chart:
-            artist_id = upsert_artist(entry.artist)
-            track_id  = upsert_track(entry.title, artist_id, is_album=is_album)
-            upsert_chart_entry(chart_id, track_id, entry.rank, chart_date_actual)
-            print(f"  {entry.rank:3}. {entry.title} - {entry.artist}")
+            try:
+                artist_id = upsert_artist(entry.artist)
+                track_id  = upsert_track(entry.title, artist_id, is_album=True)
+                sb_upsert("chart_entries", {
+                    "chart_id": chart_id,
+                    "track_id": track_id,
+                    "rank": entry.rank,
+                    "chart_date": actual_date,
+                }, "chart_id,chart_date,rank")
+            except Exception as e:
+                print(f"    ⚠️ {entry.rank}위 저장 실패: {e}")
 
-        print(f"  ✅ {len(chart)}곡 저장 완료 (날짜: {chart_date_actual})\n")
+        success += 1
+        time.sleep(delay)
+
+    print(f"\n✅ 완료: {success}주 저장, {skipped}주 건너뜀, {failed}주 실패")
+
 
 if __name__ == "__main__":
-    import sys
-    d = sys.argv[1] if len(sys.argv) > 1 else None
-    collect(d)
+    # 인자: [start_date] [end_date] [delay_seconds]
+    # 예) python backfill_billboard200_2010_2019.py 2010-01-01 2019-12-31 3
+    start = date.fromisoformat(sys.argv[1]) if len(sys.argv) > 1 else date(2010, 1, 1)
+    end   = date.fromisoformat(sys.argv[2]) if len(sys.argv) > 2 else date(2019, 12, 31)
+    delay = float(sys.argv[3]) if len(sys.argv) > 3 else 3.0
+
+    backfill(start, end, delay=delay)

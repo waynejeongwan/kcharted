@@ -1,0 +1,49 @@
+{
+  "common": {
+    "siteTitle": "K-charted",
+    "tagline": "K-pop × Global Charts",
+    "catchphrase": "Where K-pop meets the world's biggest charts.",
+    "updatedDaily": "Updated daily at 6 AM KST",
+    "footerText": "Data from Spotify, Billboard, Melon",
+    "backToCharts": "← All Charts"
+  },
+  "home": {
+    "charts": {
+      "hot100Name": "Billboard Hot 100 x K-pop",
+      "hot100Desc": "America's premier weekly singles chart",
+      "kpopRankingsName": "K-pop All-Time Rankings in Hot 100",
+      "kpopRankingsDesc": "All-time K-pop artist rankings & milestones on the Hot 100",
+      "billboard200Name": "Billboard 200 x K-pop",
+      "billboard200Desc": "America's top album chart",
+      "kpopAlbumsName": "K-pop All-Time Rankings in Billboard 200",
+      "kpopAlbumsDesc": "All-time K-pop artist album rankings & milestones on the Billboard 200",
+      "spotifyGlobalName": "Spotify Global Top 50",
+      "spotifyGlobalDesc": "The most-streamed tracks worldwide",
+      "spotifyKoreaName": "Spotify Korea Top 50",
+      "spotifyKoreaDesc": "The most-streamed tracks in South Korea"
+    }
+  },
+  "chart": {
+    "spotifyGlobalDesc": "Global daily chart",
+    "spotifyKoreaDesc": "Korea daily chart",
+    "hot100Desc": "US weekly singles chart",
+    "billboard200Desc": "US weekly albums chart",
+    "noData": "No chart data available yet.",
+    "kpopCount": "{count} K-pop {count, plural, one {track} other {tracks}} charted this week 🇰🇷"
+  },
+  "kpopAlbums": {
+    "title": "K-pop on Billboard 200",
+    "subtitle": "All-time K-pop artist album records on the Billboard 200"
+  },
+  "kpop": {
+    "title": "K-pop on Billboard Hot 100",
+    "subtitle": "All-time K-pop artist records on the Billboard Hot 100",
+    "columns": {
+      "artist": "Artist",
+      "peakRank": "Peak",
+      "songs": "Songs",
+      "top40": "Top 40",
+      "weeks": "Weeks"
+    }
+  }
+}
