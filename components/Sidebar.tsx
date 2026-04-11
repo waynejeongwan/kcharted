@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useLocale } from 'next-intl'
+import NextLink from 'next/link'
 import { Link, usePathname } from '@/navigation'
 
 interface NavItem {
@@ -136,9 +137,9 @@ export default function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose:
               {expanded[section.id] && (
                 <div className="mt-0.5 space-y-0.5 pl-2">
                   {section.items.map((item) => (
-                    <Link
+                    <NextLink
                       key={item.href}
-                      href={item.href as never}
+                      href={`/${locale}${item.href}`}
                       className={[
                         'flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors',
                         isActive(item.href)
@@ -148,7 +149,7 @@ export default function Sidebar({ isOpen, onClose }: { isOpen: boolean; onClose:
                     >
                       <span className="text-base leading-none">{item.icon}</span>
                       <span className="truncate">{locale === 'ko' ? item.labelKo : item.labelEn}</span>
-                    </Link>
+                    </NextLink>
                   ))}
                 </div>
               )}

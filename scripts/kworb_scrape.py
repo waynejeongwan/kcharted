@@ -1,12 +1,16 @@
 """
-kcharted - K-pop Spotify 스트리밍 데이터 수집 스크립트
+kcharted - K-pop Spotify 스트리밍 수집 (kworb.net)
 
-kworb.net 아티스트 페이지에서 K-pop 아티스트별 누적 스트리밍 데이터를 수집.
-URL 형식: https://kworb.net/spotify/artist/{SPOTIFY_ARTIST_ID}_songs.html
+DB의 is_kpop=True && spotify_artist_id IS NOT NULL 아티스트를 동적으로 조회해
+kworb.net 아티스트 페이지에서 누적 스트리밍 데이터를 수집.
+
+하드코딩된 목록 없음 → 새 아티스트가 DB에 추가되면 다음 실행에 자동 포함.
 
 사용:
-  python scripts/kworb_scrape.py           # 전체 수집
-  python scripts/kworb_scrape.py --dry-run # 저장 없이 출력
+  python scripts/kworb_scrape.py            # 일반 수집 (스트리밍 수치)
+  python scripts/kworb_scrape.py --milestones  # 마일스톤 날짜까지 수집
+  python scripts/kworb_scrape.py --check     # 커버리지 검증 (누락 리포트)
+  python scripts/kworb_scrape.py --dry-run   # 저장 없이 출력
 
 필요 환경변수:
   SUPABASE_URL  Supabase URL
@@ -37,148 +41,6 @@ SB_HEADERS = {
 
 UA = {"User-Agent": "Mozilla/5.0 (compatible; kcharted-bot/1.0; +https://kcharted.com)"}
 
-# ── 주요 K-pop 아티스트 Spotify ID 목록 ──────────────────
-# Spotify 아티스트 ID: open.spotify.com/artist/{ID}
-KPOP_ARTISTS = [
-    # 그룹
-    ("BTS",                   "3Nrfpe0tUJi4K4DXYWgMUX"),
-    ("BLACKPINK",             "41MozSoPIsD1dJM0CLPjZF"),
-    ("TWICE",                 "7n2Ycct7Beij7Dj7meI4X0"),
-    ("EXO",                   "3cjEqqelV9zb4BYE3KB9YN"),
-    ("GOT7",                  "2iELj47CilSVIXPQ7B3BqR"),
-    ("Stray Kids",            "2koUyBIThFkbIYFSgBjXEP"),
-    ("ENHYPEN",               "0xRXCcSX89eobfrKeRUXt0"),
-    ("NewJeans",              "2FXJeEFGMiNIBXaZCYBTDz"),
-    ("ATEEZ",                 "1z4g3DjQBjQJAzOOq5oHoT"),
-    ("aespa",                 "6wK8sOI1YGHCCZBZQBxSqI"),
-    ("IVE",                   "6RHTUrRF63xao58xh9FXYJ"),
-    ("ITZY",                  "2KC9Qb60EaY0dW3jVwHTGa"),
-    ("(G)I-DLE",              "2AfmfGFre8PeXfvkOxREGQ"),
-    ("NMIXX",                 "0GDGKpJFhVpcjIGF8N6Fek"),
-    ("ILLIT",                 "4FHlFxvVPXSbcmNBBjGvKS"),
-    ("MONSTA X",              "5TnIGCy5OcH9LsqXS8dqnC"),
-    ("NCT 127",               "7f4ignLSHJOEPlxfgxJYLk"),
-    ("NCT DREAM",             "1gBUSTR3TyDdTVFIaQnIOk"),
-    ("WayV",                  "1crBPvUKeTWM2fLB5rIpuD"),
-    ("SuperM",                "1tJ8qgbPRcmEjuIx45dVns"),
-    ("SHINee",                "4cFsaFnALAXqzEixfLhCQC"),
-    ("BIGBANG",               "0iEtIxbK0KxaSlF7G42ZOp"),
-    ("2NE1",                  "2NNq47DFCOknb9gu49ZBSZ"),
-    ("WINNER",                "6ELMGuCKxiLfUFpMJX01xt"),
-    ("iKON",                  "5dwE9TNDI8PZuRnCVqYFKL"),
-    ("SEVENTEEN",             "7nqOGRxlXj7N2JYbgNEjYH"),
-    ("LOONA",                 "1gnOGsY5FiTEJFoEmKZNhR"),
-    ("Red Velvet",            "1z7b1HCOMMtGmlyHNBOCHm"),
-    ("Girls' Generation",     "4WFsNbMC9kbGOsATiQSYPp"),
-    ("f(x)",                  "1glPRpnDDcFRysMQ1bGGxA"),
-    ("Super Junior",          "4oGKPlCM0RhBKHh8zJDR1y"),
-    ("TVXQ",                  "0aHBYzjE51KbBMcmVjlKoV"),
-    ("B.A.P",                 "4hA2FMqajB7MFq5IlpS3c2"),
-    ("DAY6",                  "1R2sl2xeEFLKKFdUgqpOBU"),
-    ("2PM",                   "0gxy4QT7gQovRPxpBHCLfG"),
-    ("4MINUTE",               "7e0LpKQ39mALq4LNJPi3CH"),
-    ("Kara",                  "7Ia7kpfVgFTi3RMSA5fXv8"),
-    ("Wonder Girls",          "7iaBuGxPoTqOaJEfVIp6cQ"),
-    ("miss A",                "15Sgu3VFLxXGStpidMhV5s"),
-    ("SISTAR",                "6bKMjQh3KoFqKB5ZCxk90d"),
-    ("T-ARA",                 "5jQI2r1RDBLSe6uZzCpBML"),
-    ("Apink",                 "0HWlMIRpL2kzm8kOqbbrT7"),
-    ("Mamamoo",               "4GdMGDmMCiHBKCJnZcB9fR"),
-    ("ASTRO",                 "3TzKjAqe2AEpxDlTJFHgjk"),
-    ("P1Harmony",             "0vKZMeMGkYbTbkDnRBb0TQ"),
-    ("THE BOYZ",              "2eBxhzOFqpNnGJMsHXFJGb"),
-    ("CIX",                   "6LGz8O7xFMJqQ1uEQd6Kx5"),
-    ("ONF",                   "2yLa0QULdQr4gkIpomcalO"),
-    ("TXT",                   "4Ll4UcfsQQu38Hxvt8YhWR"),
-    ("VERIVERY",              "4pFY3B3Mw7AGMT5tJCz1o4"),
-    ("Weeekly",               "6KdtEPxcXRRUMFwxrEfaMy"),
-    ("tripleS",               "5cAkgAyVoOYCsGlUh0wSVf"),
-    ("fromis_9",              "5TI8yMpIlLGaZKHBxFH4e3"),
-    ("Kep1er",                "2qTRMDvMRXNUZFcBp2ZOia"),
-    ("LE SSERAFIM",           "6n5sFXHMUDEFDfbT09cuyU"),
-    ("KATSEYE",               "5cRKAuOeJE5FqSF6s2b2T5"),
-    # 솔로
-    ("PSY",                   "1r3sGHo5aIxFpMZDlYBHpJ"),
-    ("IU",                    "3HqSZб4y048G5lkh1UrMXJ"),
-    ("CL",                    "3oYVnDBb9QsPVCoHKaqGMQ"),
-    ("Taeyang",               "0YcLb5GbFqNHuFhPGkGxhN"),
-    ("G-Dragon",              "5JdoeIPsOBuIABjIVAqoXC"),
-    ("Zico",                  "5FovSmzDEGm0eOPEWTGZXt"),
-    ("Jay Park",              "2iiSFQbYIWCfcm3QHXhEPb"),
-    ("Jessi",                 "7AKXNBKF2r2xJKRLfZCGJW"),
-    ("HyunA",                 "6T6TBY4f1HiCDdMflD7Kmq"),
-    ("Taeyeon",               "2nkdd69GQ5UD4Gq6XGXU4D"),
-    ("Taemin",                "1Cs0zKBU1kc0i8ypK3B9ai"),
-    ("Baekhyun",              "6bErdbWuONBniqOJyPZt1N"),
-    ("Chen",                  "6TA6QPggA9IkxMQRUkfXDZ"),
-    ("Chanyeol",              "1QGDwwrEiGo8MUfcJbdUAv"),
-    ("Kai",                   "6mfK6Q2tzLMEchAr0e9Lyw"),
-    ("Lay",                   "4i9LoHGN02ANBbixiHBY31"),
-    ("Sehun",                 "09TIAJVgSDSLT5bV0qMZDp"),
-    ("SUGA / Agust D",        "2aSmF7BKSn42jNoxdkKBsK"),
-    ("J-Hope",                "1OwarW4LEHnoep20ixRA0y"),
-    ("RM",                    "3Nrfpe0tUJi4K4DXYWgMUX"),  # BTS 메인 계정 공유
-    ("Jimin",                 "1oSPZhvZMIrWW5I41kPkkY"),
-    ("V (Kim Taehyung)",      "1Cx6vMnCHPlgPblBMV7hNH"),
-    ("Jung Kook",             "6HaGTQPmzraZnuqPpqB7YO"),
-    ("Jin",                   "2XHFHbJVNkBB1TsshNShT1"),
-    ("Jisoo",                 "3JYjRKiuKobRPQRr0I3hHV"),
-    ("Jennie",                "6gg4mhMwIAzHf15VHQN2WT"),
-    ("Lisa",                  "5NHx6e3ABuiGIrO1Oa0tAm"),
-    ("Rosé",                  "3eqjTLE0HfPfh78zjh6TqT"),
-    ("Hwasa",                 "2pFl8bHIU3N5q9DfEZWOFr"),
-    ("Solar",                 "1bBVn7UMPvHj5tO36bVv6g"),
-    ("Moonbyul",              "72uaBkSLkVPbzCHOuMSJGN"),
-    ("Wheein",                "0WRePfPvj6P5mZFyHAfYtA"),
-    ("Jackson Wang",          "6l3HvQ5sa6mXTsMTB6G5gY"),
-    ("Mark (GOT7)",           "2QhMDJbLrjQcBzFdF4BXAW"),
-    ("BamBam",                "6eDqHjH9HOhmoqMBILkqkJ"),
-    ("Yugyeom",               "7k6aBKtxLCIClRXA2b2Tnl"),
-    ("DPR Ian",               "57kkYfpqGM0OvMiZtcr6KN"),
-    ("Kang Daniel",           "0gBRMgdQNBNAblW2N2VHYA"),
-    ("Wanna One",             "4yubPJEPdY6E7t00sVOiEU"),
-    ("Weki Meki",             "0hnWfSVVfRLH9Vj6RWBLAL"),
-    ("Brave Girls",           "1l4vXAjxm3OlFvUP6Iy7O2"),
-    ("STAYC",                 "5ENFGmRkLCNSFOWDvHHfqn"),
-    ("ailee",                 "2ZO7bB9JpCiGUfhLRmNiqK"),
-    ("10CM",                  "6PXTsRwJzFf7MYbMjSmHVN"),
-    ("Zico",                  "5FovSmzDEGm0eOPEWTGZXt"),
-    ("Block B",               "5kDlQqnRQGBmWwp3O2MVSQ"),
-    ("BEAST/Highlight",       "4j7T12FuZHCPMiZQb29GEv"),
-    ("Infinite",              "0IWK4nIPy5mPFYBtq7OYhm"),
-    ("B1A4",                  "0G0y9UjEnj2VExzDfSRGNP"),
-    ("Nu'est",                "0E6hRkd9r3iyXGYBWBpQfE"),
-    ("CNBLUE",                "4i9LoHGN02ANBbixiHBY31"),
-    ("FT Island",             "3dlOR86MXF2PcNsBLgM7Ng"),
-    ("Epik High",             "5IbEL7mSvKQDifmvZDUEMY"),
-    ("Hyukoh",                "4dqoqv3E3lnHkFplGovuFq"),
-    ("Jannabi",               "4byAoFGgP6E1jVSHFnMjPN"),
-    ("BIG Naughty",           "3oKNwFdL0nmJmOBBJlZl6q"),
-    ("OOHYO",                 "3SKPXCnBtKOCN3sXqYnvMY"),
-    ("lIlBOI",                "1YJSZBgFQgKGklefz3VFwQ"),
-    ("Lim Chang-jung",        "3JN9E3gfIKfNQ1PZNJ7DSF"),
-    ("Lee Hyori",             "5FiJ6bUEQMHQNRLSxuvfkm"),
-    ("BoA",                   "14MtKDL2XsoaSVB9l8oN0V"),
-    ("Rain",                  "5I4vMHxoEHQqwEPq9iVBEo"),
-    ("Crush",                 "0ULHbIV5mOvYjH2X7gR24G"),
-    ("Dean",                  "0hBnNGJaxZXXTgROTlRv7m"),
-    ("Zion.T",                "6IWxHgGDiQqOaU5HLlXnQf"),
-    ("pH-1",                  "5a9nxjKiRMxlCaSBHpvFKt"),
-    ("Kid Milli",             "2J6T9RHJJP0BFeSm5JVHM5"),
-    ("Heize",                 "3V43TQvbKAlEMQqMjDdAjV"),
-    ("SOLE",                  "1Gl8KjcNQxMiXZuPUlE6wS"),
-    ("Hoody",                 "1p6QRIiH2eLCdBVRJVlRSc"),
-    ("Sogumm",                "0Gd0qYh5nN1UZJJHbxLbXz"),
-    ("MINO",                  "7iBdKO3Gn6Fqik5gM6hGXj"),
-    ("Song Mino",             "7iBdKO3Gn6Fqik5gM6hGXj"),
-    ("Bobby",                 "2REHlALOrqCUqaHDOe6gFW"),
-    ("Chanwoo",               "4dF7OHwl5HfZFKCBrDp0O8"),
-    ("GD x Taeyang",          "1JEZT37VqLRGnHqeEbMpIr"),
-    ("Seungri",               "0GDGkpJFhVpcjIGF8N6Fek"),
-    ("Daesung",               "5fFmEJLHJQNFJO7xOjBVFV"),
-    ("T.O.P",                 "6Jdvd1QvI9kKKGmhPeWpjt"),
-]
-
 MILESTONES = [
     (100_000_000,   "days_to_100m", "reached_100m_at"),
     (500_000_000,   "days_to_500m", "reached_500m_at"),
@@ -186,7 +48,79 @@ MILESTONES = [
 ]
 
 
-# ── 유틸 ─────────────────────────────────────────────────
+# ── DB 조회 ───────────────────────────────────────────────
+def get_kpop_artists_from_db() -> list[dict]:
+    """
+    DB에서 is_kpop=True AND spotify_artist_id IS NOT NULL 인 아티스트 목록 조회.
+    canonical 아티스트만 포함 (canonical_artist_id IS NULL).
+    """
+    all_artists = []
+    offset = 0
+    limit = 1000
+    while True:
+        resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/artists",
+            headers=SB_HEADERS,
+            params={
+                "is_kpop": "eq.true",
+                "spotify_artist_id": "not.is.null",
+                "canonical_artist_id": "is.null",
+                "select": "id,name,spotify_artist_id",
+                "limit": limit,
+                "offset": offset,
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        batch = resp.json()
+        all_artists.extend(batch)
+        if len(batch) < limit:
+            break
+        offset += limit
+    return all_artists
+
+
+def get_kpop_artists_without_spotify_id() -> list[dict]:
+    """spotify_artist_id 없는 K-pop 아티스트 목록 (커버리지 갭 확인용)"""
+    resp = requests.get(
+        f"{SUPABASE_URL}/rest/v1/artists",
+        headers=SB_HEADERS,
+        params={
+            "is_kpop": "eq.true",
+            "spotify_artist_id": "is.null",
+            "canonical_artist_id": "is.null",
+            "select": "id,name",
+            "order": "name",
+            "limit": 1000,
+        },
+        timeout=15,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
+def get_artists_in_charts_but_no_streams() -> list[dict]:
+    """
+    chart_entries에 기록은 있지만 kpop_spotify_stats에 없는 K-pop 아티스트.
+    (커버리지 갭 확인용)
+    """
+    # Supabase RPC가 없으므로 간접 방식: DB에서 K-pop 아티스트 ID 목록 조회
+    resp = requests.get(
+        f"{SUPABASE_URL}/rest/v1/kpop_spotify_stats",
+        headers=SB_HEADERS,
+        params={"select": "artist_name", "limit": 5000},
+        timeout=15,
+    )
+    if not resp.ok:
+        return []
+    covered = {r["artist_name"].lower() for r in resp.json()}
+
+    all_kpop = get_kpop_artists_from_db()
+    missing = [a for a in all_kpop if a["name"].lower() not in covered]
+    return missing
+
+
+# ── kworb 파싱 ────────────────────────────────────────────
 def parse_num(s: str) -> Optional[int]:
     s = re.sub(r"[,\s+]", "", s.strip())
     try:
@@ -200,8 +134,9 @@ def safe_get(url: str, retries: int = 3, delay: float = 2.0) -> Optional[request
         try:
             resp = requests.get(url, headers=UA, timeout=20)
             if resp.status_code == 429:
-                print(f"    Rate limited, {delay * (attempt + 1):.0f}s 대기...")
-                time.sleep(delay * (attempt + 1))
+                wait = delay * (2 ** attempt)
+                print(f"    Rate limited — {wait:.0f}s 대기...")
+                time.sleep(wait)
                 continue
             if resp.status_code == 404:
                 return None
@@ -215,30 +150,32 @@ def safe_get(url: str, retries: int = 3, delay: float = 2.0) -> Optional[request
     return None
 
 
-# ── kworb 아티스트 페이지 파싱 ────────────────────────────
 def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
     """
-    kworb 아티스트 페이지에서 트랙별 누적 스트리밍 수집
+    kworb 아티스트 페이지에서 트랙별 누적 스트리밍 수집.
     URL: https://kworb.net/spotify/artist/{ID}_songs.html
     """
     url = f"https://kworb.net/spotify/artist/{spotify_artist_id}_songs.html"
     resp = safe_get(url)
     if resp is None:
-        print(f"  [{artist_name}] 페이지 없음 (ID: {spotify_artist_id})")
         return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
-    table = soup.find("table")
+
+    # 곡 목록 테이블 찾기 (Song Title 헤더가 있는 것)
+    table = None
+    for t in soup.find_all("table"):
+        ths = [th.get_text(strip=True).lower() for th in t.find_all("th")]
+        if any("song" in h or "title" in h for h in ths):
+            table = t
+            break
     if not table:
-        print(f"  [{artist_name}] 테이블 없음")
         return []
 
-    # 헤더에서 컬럼 파악
     headers = [th.get_text(strip=True).lower() for th in table.find_all("th")]
-    # kworb 컬럼: Song, Streams, Daily (또는 유사)
-    col_song   = next((i for i, h in enumerate(headers) if "song" in h or "title" in h), 0)
-    col_total  = next((i for i, h in enumerate(headers) if "total" in h or "stream" in h and "daily" not in h), 1)
-    col_daily  = next((i for i, h in enumerate(headers) if "daily" in h), None)
+    col_song  = next((i for i, h in enumerate(headers) if "song" in h or "title" in h), 0)
+    col_total = next((i for i, h in enumerate(headers) if "stream" in h and "daily" not in h), 1)
+    col_daily = next((i for i, h in enumerate(headers) if "daily" in h), None)
 
     results = []
     for tr in table.find_all("tr")[1:]:
@@ -246,7 +183,6 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
         if len(tds) < 2:
             continue
 
-        # 트랙명 + Spotify track ID
         title_td = tds[col_song] if col_song < len(tds) else tds[0]
         link = title_td.find("a")
         title = link.get_text(strip=True) if link else title_td.get_text(strip=True)
@@ -255,12 +191,13 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
 
         track_id = None
         if link and link.get("href"):
+            # https://open.spotify.com/track/XXXX 또는 /spotify/track/XXXX.html
             m = re.search(r"/track/([A-Za-z0-9]+)", link["href"])
             if m:
                 track_id = m.group(1)
 
         total = parse_num(tds[col_total].get_text(strip=True)) if col_total < len(tds) else None
-        if total is None or total <= 0:
+        if not total or total <= 0:
             continue
 
         daily = None
@@ -279,10 +216,7 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
 
 
 def scrape_track_milestones(spotify_track_id: str) -> dict:
-    """
-    kworb 트랙 히스토리 페이지에서 마일스톤 날짜 수집
-    URL: https://kworb.net/spotify/track/{ID}.html
-    """
+    """kworb 트랙 히스토리 페이지에서 마일스톤 날짜 수집"""
     url = f"https://kworb.net/spotify/track/{spotify_track_id}.html"
     resp = safe_get(url)
     if resp is None:
@@ -339,13 +273,11 @@ def scrape_track_milestones(spotify_track_id: str) -> dict:
                 result[key_days] = (entry_date - first_date).days
                 result[key_date] = entry_date.isoformat()
                 break
-
     return result
 
 
 # ── Supabase 저장 ──────────────────────────────────────────
 def upsert_stats(rows: list[dict], dry_run: bool) -> dict[str, int]:
-    """kpop_spotify_stats upsert, {spotify_track_id: db_id} 맵 반환"""
     if dry_run:
         for r in rows[:5]:
             print(f"  [DRY] {r['artist_name']} — {r['track_title']} | {r['total_streams']:,}")
@@ -354,15 +286,11 @@ def upsert_stats(rows: list[dict], dry_run: bool) -> dict[str, int]:
         return {}
 
     id_map: dict[str, int] = {}
-    BATCH = 100
     today = date.today().isoformat()
+    BATCH = 100
 
     for i in range(0, len(rows), BATCH):
-        batch = [
-            {**r, "updated_at": today}
-            for r in rows[i:i + BATCH]
-            if r.get("spotify_track_id")
-        ]
+        batch = [{**r, "updated_at": today} for r in rows[i:i + BATCH] if r.get("spotify_track_id")]
         if not batch:
             continue
         resp = requests.post(
@@ -405,100 +333,156 @@ def update_milestones(db_id: int, milestones: dict):
         print(f"    [경고] 마일스톤 업데이트 실패 (id={db_id}): {resp.status_code}")
 
 
+# ── 커버리지 검증 ─────────────────────────────────────────
+def run_coverage_check():
+    """
+    누락 리포트 출력:
+    1. spotify_artist_id가 없는 K-pop 아티스트 (kworb 수집 불가)
+    2. spotify_artist_id는 있지만 kworb 수집 결과가 없는 아티스트
+    """
+    print("=== 커버리지 검증 ===\n")
+
+    # 1. spotify_artist_id 미등록
+    no_id = get_kpop_artists_without_spotify_id()
+    print(f"① spotify_artist_id 미등록 K-pop 아티스트: {len(no_id)}명")
+    for a in no_id[:30]:
+        print(f"  id={a['id']} | {a['name']}")
+    if len(no_id) > 30:
+        print(f"  ... ({len(no_id) - 30}명 더)")
+
+    # 2. ID는 있지만 수집 데이터 없음
+    not_scraped = get_artists_in_charts_but_no_streams()
+    print(f"\n② ID 등록됐지만 스트리밍 데이터 없는 아티스트: {len(not_scraped)}명")
+    for a in not_scraped[:30]:
+        print(f"  id={a['id']} | {a['name']} | spotify_id={a.get('spotify_artist_id','')}")
+    if len(not_scraped) > 30:
+        print(f"  ... ({len(not_scraped) - 30}명 더)")
+
+    # 3. 수집 현황 요약
+    resp = requests.get(
+        f"{SUPABASE_URL}/rest/v1/kpop_spotify_stats",
+        headers=SB_HEADERS,
+        params={"select": "count", "limit": 1},
+        timeout=10,
+    )
+    if resp.ok:
+        count = resp.headers.get("Content-Range", "").split("/")[-1]
+        print(f"\n③ kpop_spotify_stats 총 트랙 수: {count}")
+
+    total_kpop = get_kpop_artists_from_db()
+    print(f"④ spotify_artist_id 등록 K-pop 아티스트: {len(total_kpop)}명")
+    print(f"\n커버리지 갭: {len(no_id)}명이 spotify_artist_id 없음 → admin 페이지 또는 SQL로 추가 필요")
+
+
 # ── 메인 ─────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="K-pop Spotify 스트리밍 수집 (kworb.net)")
-    parser.add_argument("--milestones", action="store_true",
-                        help="100M+ 트랙의 마일스톤 날짜까지 수집 (느림)")
-    parser.add_argument("--top", type=int, default=0,
-                        help="마일스톤 수집: 아티스트당 상위 N개 트랙 (0=전체)")
-    parser.add_argument("--dry-run", action="store_true", help="저장 없이 결과 출력")
+    parser.add_argument("--milestones", action="store_true", help="100M+ 트랙 마일스톤 날짜 수집")
+    parser.add_argument("--top",        type=int, default=0,  help="마일스톤: 아티스트당 상위 N개 (0=전체)")
+    parser.add_argument("--check",      action="store_true",  help="커버리지 검증만 실행")
+    parser.add_argument("--dry-run",    action="store_true",  help="저장 없이 결과 출력")
     args = parser.parse_args()
 
-    print("=== K-pop Spotify 스트리밍 수집 (kworb.net) ===\n")
-    print(f"대상 아티스트: {len(KPOP_ARTISTS)}명\n")
+    if args.check:
+        run_coverage_check()
+        return
 
+    print("=== K-pop Spotify 스트리밍 수집 ===\n")
+
+    # ① DB에서 아티스트 목록 조회
+    print("DB에서 K-pop 아티스트 목록 조회 중...")
+    db_artists = get_kpop_artists_from_db()
+    print(f"  대상: {len(db_artists)}명 (is_kpop=True, spotify_artist_id 있음)\n")
+
+    if not db_artists:
+        print("  [오류] 대상 아티스트 없음. artists 테이블에 spotify_artist_id를 등록하세요.")
+        print("  → scripts/kworb_scrape.py --check 로 현황 확인 가능")
+        sys.exit(1)
+
+    # ② kworb 수집
     all_tracks: list[dict] = []
+    failed: list[str] = []
 
-    for idx, (artist_name, spotify_id) in enumerate(KPOP_ARTISTS, 1):
-        print(f"[{idx:3}/{len(KPOP_ARTISTS)}] {artist_name}...", end=" ", flush=True)
-        tracks = scrape_artist_songs(artist_name, spotify_id)
+    for idx, artist in enumerate(db_artists, 1):
+        name = artist["name"]
+        sid  = artist["spotify_artist_id"]
+        print(f"  [{idx:3}/{len(db_artists)}] {name}...", end=" ", flush=True)
+        tracks = scrape_artist_songs(name, sid)
         if tracks:
             print(f"{len(tracks)}곡")
             all_tracks.extend(tracks)
         else:
-            print("(없음)")
+            print("(없음 — kworb 페이지 없음)")
+            failed.append(f"{name} ({sid})")
         time.sleep(0.8)
 
-    # 중복 제거 (같은 track_id가 여러 아티스트에 등록된 경우 최대 스트림 유지)
+    # ③ 중복 제거 (같은 track_id → 최대 스트림 유지)
     dedup: dict[str, dict] = {}
     for t in all_tracks:
         tid = t.get("spotify_track_id")
-        if tid:
-            if tid not in dedup or t["total_streams"] > dedup[tid]["total_streams"]:
-                dedup[tid] = t
-        # track_id 없는 것도 포함 (artist+title 키로)
-        else:
-            key = f"{t['artist_name']}|{t['track_title']}"
-            if key not in dedup:
-                dedup[key] = t
+        key = tid if tid else f"{t['artist_name']}|{t['track_title']}"
+        if key not in dedup or t["total_streams"] > dedup[key]["total_streams"]:
+            dedup[key] = t
 
-    unique_tracks = list(dedup.values())
-    unique_tracks.sort(key=lambda x: x["total_streams"], reverse=True)
+    unique = sorted(dedup.values(), key=lambda x: x["total_streams"], reverse=True)
+    print(f"\n수집: {len(all_tracks)}곡 → 중복 제거 후 {len(unique)}곡")
 
-    print(f"\n총 {len(all_tracks)}곡 수집 → 중복 제거 후 {len(unique_tracks)}곡")
-    print(f"Top 5 스트리밍:")
-    for t in unique_tracks[:5]:
-        print(f"  {t['total_streams']:>15,}  {t['artist_name']} — {t['track_title']}")
+    if unique:
+        print("Top 5:")
+        for t in unique[:5]:
+            print(f"  {t['total_streams']:>15,}  {t['artist_name']} — {t['track_title']}")
 
-    # DB 저장
+    # ④ 저장
     print(f"\nDB 저장 중...")
-    id_map = upsert_stats(unique_tracks, args.dry_run)
-    if not args.dry_run:
-        print(f"  저장 완료: {len(id_map)}개")
+    id_map = upsert_stats(unique, args.dry_run)
 
+    if not args.dry_run:
+        print(f"  저장: {len(id_map)}개")
         # 상위 100개 스냅샷
-        top100 = [t for t in unique_tracks if t.get("spotify_track_id")][:100]
-        for t in top100:
+        for t in [t for t in unique if t.get("spotify_track_id")][:100]:
             sid = id_map.get(t["spotify_track_id"])
             if sid:
                 save_snapshot(sid, t["total_streams"])
-        print(f"  스냅샷 저장: {len(top100)}개")
+        print(f"  스냅샷: 상위 {min(100, len(unique))}개")
 
-    # 마일스톤 수집
+    # ⑤ 마일스톤
     if args.milestones:
-        milestone_targets = [
-            t for t in unique_tracks
-            if t.get("spotify_track_id") and t["total_streams"] >= 100_000_000
-        ]
+        targets = [t for t in unique if t.get("spotify_track_id") and t["total_streams"] >= 100_000_000]
         if args.top > 0:
-            # 아티스트당 top N개
-            artist_count: dict[str, int] = {}
+            artist_cnt: dict[str, int] = {}
             filtered = []
-            for t in milestone_targets:
+            for t in targets:
                 a = t["artist_name"]
-                artist_count[a] = artist_count.get(a, 0) + 1
-                if artist_count[a] <= args.top:
+                artist_cnt[a] = artist_cnt.get(a, 0) + 1
+                if artist_cnt[a] <= args.top:
                     filtered.append(t)
-            milestone_targets = filtered
+            targets = filtered
 
-        print(f"\n마일스톤 수집: {len(milestone_targets)}트랙 (100M+)")
-        for idx, t in enumerate(milestone_targets, 1):
-            sid = t["spotify_track_id"]
-            db_id = id_map.get(sid)
-            print(f"  [{idx}/{len(milestone_targets)}] {t['artist_name']} — {t['track_title']}")
-            m = scrape_track_milestones(sid)
+        print(f"\n마일스톤 수집: {len(targets)}트랙 (100M+)")
+        for idx, t in enumerate(targets, 1):
+            tid = t["spotify_track_id"]
+            db_id = id_map.get(tid)
+            print(f"  [{idx}/{len(targets)}] {t['artist_name']} — {t['track_title']}")
+            m = scrape_track_milestones(tid)
             if m and db_id and not args.dry_run:
                 update_milestones(db_id, m)
                 flags = []
-                if m.get("days_to_100m") is not None: flags.append(f"100M:{m['days_to_100m']}일")
-                if m.get("days_to_500m") is not None: flags.append(f"500M:{m['days_to_500m']}일")
-                if m.get("days_to_1b")   is not None: flags.append(f"1B:{m['days_to_1b']}일")
+                if m.get("days_to_100m"): flags.append(f"100M:{m['days_to_100m']}일")
+                if m.get("days_to_500m"): flags.append(f"500M:{m['days_to_500m']}일")
+                if m.get("days_to_1b"):   flags.append(f"1B:{m['days_to_1b']}일")
                 if flags:
                     print(f"    → {' / '.join(flags)}")
             time.sleep(0.5)
 
-    print("\n완료!")
+    # ⑥ 결과 요약
+    print(f"\n=== 완료 ===")
+    print(f"  수집 성공: {len(db_artists) - len(failed)}명")
+    if failed:
+        print(f"  kworb 페이지 없음 ({len(failed)}명):")
+        for f in failed:
+            print(f"    - {f}")
+        print(f"  → 위 아티스트는 kworb에 페이지가 없거나 Spotify ID가 틀린 것입니다.")
+        print(f"    --check 옵션으로 전체 커버리지 상태를 확인하세요.")
 
 
 if __name__ == "__main__":

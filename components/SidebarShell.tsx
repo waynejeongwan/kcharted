@@ -51,7 +51,7 @@ export default function SidebarShell({
 
         {/* Footer */}
         <footer className="border-t border-zinc-800 px-6 py-6 text-center text-zinc-500 text-sm">
-          © {new Date().getFullYear()} kcharted · Data from Spotify, Billboard
+          © 2025 kcharted · Data from Spotify, Billboard
         </footer>
       </div>
     </div>
