@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -)",
+      "Bash(python3 -c ':*)",
+      "Bash(python3 scripts/wiki_verify.py --json)",
+      "Bash(gh secret:*)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(npx tsc:*)",
+      "Bash(node -e ':*)",
+      "Bash(npm run:*)",
+      "Bash(git commit -m 'fix: kworb_scrape - use artist pages instead of non-existent kpop.html:*)",
+      "Bash(python3 scripts/backfill_spotify_artist_ids.py --dry-run)",
+      "Bash(python3 scripts/backfill_spotify_artist_ids.py)",
+      "Bash(python3 scripts/kworb_scrape.py --dry-run)",
+      "Bash(python3 scripts/kworb_scrape.py)"
+    ],
+    "additionalDirectories": [
+      "/Users/waynejeongwan/Documents/MyProject/kcharted/app/[locale]",
+      "/Users/waynejeongwan/Documents/MyProject/kcharted/app/[locale]/kpop-milestones"
+    ]
+  }
+}

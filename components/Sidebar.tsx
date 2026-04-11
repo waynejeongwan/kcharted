@@ -40,7 +40,6 @@ const NAV: NavSection[] = [
       { labelEn: 'Hot 100 K-pop', labelKo: 'Hot 100 K-pop', icon: '🎤', href: '/kpop' },
       { labelEn: 'Billboard 200 K-pop', labelKo: 'Billboard 200 K-pop', icon: '💿', href: '/kpop-albums' },
       { labelEn: 'Streaming Rankings', labelKo: '누적 스트리밍 순위', icon: '🎵', href: '/kpop-streaming' },
-      { labelEn: 'Fastest Milestones', labelKo: '최단 달성 순위', icon: '⚡', href: '/kpop-milestones' },
     ],
   },
   {
