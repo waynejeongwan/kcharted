@@ -78,8 +78,14 @@ def get_track_info(spotify_track_id: str, kpop_artist_id: str) -> tuple[bool, Op
         return True, None  # 토큰 없으면 검증 생략
     resp = requests.get(f"https://api.spotify.com/v1/tracks/{spotify_track_id}",
                         headers={"Authorization": f"Bearer {token}"}, timeout=10)
+    if resp.status_code == 429:
+        retry_after = int(resp.headers.get("Retry-After", 5))
+        time.sleep(retry_after)
+        resp = requests.get(f"https://api.spotify.com/v1/tracks/{spotify_track_id}",
+                            headers={"Authorization": f"Bearer {token}"}, timeout=10)
     if not resp.ok:
         return True, None  # API 오류시 통과
+    time.sleep(0.1)  # Spotify rate limit 방지
     artists = resp.json().get("artists", [])
     artist_ids = [a["id"] for a in artists]
 
