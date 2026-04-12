@@ -214,6 +214,7 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
     if resp is None:
         return []
 
+    resp.encoding = "utf-8"
     soup = BeautifulSoup(resp.text, "html.parser")
 
     # 곡 목록 테이블 찾기 (Song Title 헤더가 있는 것)

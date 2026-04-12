@@ -287,7 +287,7 @@ export default function KpopStreamingClient({
                 </div>
                 <span className="hidden sm:block text-sm text-zinc-400 truncate">
                   {s.main_artist
-                    ? <>{s.main_artist} <span className="text-zinc-600">feat.</span> <span className="text-pink-400">{s.artist_name}</span></>
+                    ? <>{s.main_artist} feat. {s.artist_name}</>
                     : s.artist_name}
                 </span>
                 <span className="hidden sm:block text-sm font-mono text-green-400 font-semibold text-right">{fmtStreams(s.total_streams)}</span>
