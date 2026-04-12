@@ -26,15 +26,19 @@ import sys
 import json
 import base64
 import argparse
+import subprocess
+import time
 from datetime import date, timedelta
 
+import io
 import requests
-from bs4 import BeautifulSoup
+from PIL import Image
 
 # ── 설정 ──────────────────────────────────────────────────
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://hqoovxivfabnwfdjnuvs.supabase.co")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-GEMINI_KEY   = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_KEY     = os.environ.get("GEMINI_API_KEY", "")
+ANTHROPIC_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
 
 SB_HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -43,7 +47,8 @@ SB_HEADERS = {
     "Prefer": "resolution=merge-duplicates",
 }
 
-TALKOFTHECHARTS_URL = "https://www.talkofthecharts.com"
+X_PROFILE_URL = "https://x.com/talkofthecharts"
+CHROME_LOAD_WAIT = 10  # 페이지 로딩 대기 초
 
 KPOP_ARTISTS_CACHE: set[str] = set()
 
@@ -92,60 +97,100 @@ def is_kpop(artist: str) -> bool:
     return artist.lower() in KPOP_ARTISTS_CACHE
 
 
-# ── 이미지 URL 탐색 ───────────────────────────────────────
+# ── 이미지 URL 탐색 (Chrome AppleScript) ─────────────────
 def find_prediction_image_url() -> str | None:
-    """talkofthecharts.com에서 최신 예측 이미지 URL 탐색"""
-    try:
-        resp = requests.get(
-            TALKOFTHECHARTS_URL,
-            headers={"User-Agent": "kcharted-bot/1.0"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-
-        for img in soup.find_all("img"):
-            src = img.get("src", "") or img.get("data-src", "")
-            if src and any(kw in src.lower() for kw in ["hot100", "hot-100", "prediction", "predict", "chart"]):
-                if src.startswith("//"):
-                    src = "https:" + src
-                elif src.startswith("/"):
-                    src = TALKOFTHECHARTS_URL + src
-                print(f"  이미지 발견: {src}")
-                return src
-
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if any(href.lower().endswith(ext) for ext in [".png", ".jpg", ".jpeg", ".webp"]):
-                if href.startswith("/"):
-                    href = TALKOFTHECHARTS_URL + href
-                if any(kw in href.lower() for kw in ["hot100", "prediction", "chart"]):
-                    print(f"  링크 이미지 발견: {href}")
-                    return href
-
-        print("  [경고] 자동 이미지 탐색 실패 — --url 옵션으로 직접 지정하세요")
-        return None
-
-    except Exception as e:
-        print(f"  [오류] 사이트 접속 실패: {e}")
-        return None
-
-
-# ── Gemini Vision으로 차트 추출 ───────────────────────────
-def extract_chart_with_gemini(image_url: str) -> list[dict]:
     """
-    Google Gemini 1.5 Flash (무료) Vision API로 이미지에서 차트 추출.
-    무료 한도: 15 req/min, 1M tokens/day — 주 3회 용도로 충분.
+    로컬 Chrome(로그인 상태)으로 X 페이지를 열고
+    AppleScript + JS로 최신 트윗 이미지 URL을 추출.
+    macOS 전용. Chrome에서 보기 > 개발자 > Apple Events의 자바스크립트 허용 필요.
+    """
+    # X 탭 찾기 → 없으면 새로 열기, 있으면 포커스 후 새로고침
+    focus_or_open = (
+        'tell application "Google Chrome"\n'
+        '  set found to false\n'
+        '  repeat with w in windows\n'
+        '    repeat with t in tabs of w\n'
+        f'      if URL of t contains "x.com/talkofthecharts" then\n'
+        '        set active tab index of w to tab index of t\n'
+        '        set index of w to 1\n'
+        '        reload t\n'
+        '        set found to true\n'
+        '        exit repeat\n'
+        '      end if\n'
+        '    end repeat\n'
+        '    if found then exit repeat\n'
+        '  end repeat\n'
+        '  if not found then\n'
+        f'    open location "{X_PROFILE_URL}"\n'
+        '  end if\n'
+        'end tell'
+    )
+    subprocess.run(["osascript", "-e", focus_or_open], capture_output=True)
+    print(f"  X 탭 로딩 대기 {CHROME_LOAD_WAIT}초...")
+    time.sleep(CHROME_LOAD_WAIT)
+
+    # X 탭을 직접 찾아서 JS 실행
+    js = (
+        "(function(){"
+        "var imgs=Array.from(document.querySelectorAll('article img'))"
+        ".map(function(i){return i.src;})"
+        ".filter(function(s){return s.indexOf('pbs.twimg.com/media')>=0;})"
+        ".map(function(s){return s.replace(/name=[^&]+/,'name=large');});"
+        "var unique=[...new Set(imgs)];"
+        "return JSON.stringify(unique.slice(0,5));"
+        "})()"
+    )
+    applescript = (
+        'tell application "Google Chrome"\n'
+        '  repeat with w in windows\n'
+        '    repeat with t in tabs of w\n'
+        '      if URL of t contains "x.com/talkofthecharts" then\n'
+        f'        set r to execute t javascript "{js}"\n'
+        '        return r\n'
+        '      end if\n'
+        '    end repeat\n'
+        '  end repeat\n'
+        '  return ""\n'
+        'end tell'
+    )
+    result = subprocess.run(["osascript", "-e", applescript], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"  [오류] AppleScript 실패: {result.stderr.strip()}")
+        return None
+
+    raw = result.stdout.strip()
+    if not raw:
+        print("  [경고] 이미지 없음 — 페이지가 아직 로드 중이거나 X 로그인 필요")
+        return None
+
+    try:
+        imgs = json.loads(raw)
+    except json.JSONDecodeError:
+        print(f"  [오류] JSON 파싱 실패: {raw[:100]}")
+        return None
+
+    if not imgs:
+        print("  [경고] 트윗 이미지를 찾지 못함")
+        return None
+
+    print(f"  이미지 {len(imgs)}개 발견, 첫 번째 사용: {imgs[0]}")
+    return imgs[0]
+
+
+# ── Claude Vision으로 차트 추출 ──────────────────────────
+def extract_chart_with_claude(image_url: str) -> list[dict]:
+    """
+    Anthropic Claude Vision API로 이미지에서 차트 추출.
     반환: [{"rank": 1, "title": "...", "artist": "..."}]
     """
-    if not GEMINI_KEY:
-        raise EnvironmentError("GEMINI_API_KEY 환경변수가 필요합니다. (aistudio.google.com에서 무료 발급)")
+    if not ANTHROPIC_KEY:
+        raise EnvironmentError("ANTHROPIC_API_KEY 환경변수가 필요합니다.")
 
     # 이미지 다운로드
     img_resp = requests.get(image_url, headers={"User-Agent": "kcharted-bot/1.0"}, timeout=30)
     img_resp.raise_for_status()
-    content_type = img_resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
     img_b64 = base64.standard_b64encode(img_resp.content).decode()
+    content_type = img_resp.headers.get("Content-Type", "image/jpeg").split(";")[0].strip()
 
     prompt = (
         "This image shows a Billboard Hot 100 prediction chart. "
@@ -155,27 +200,33 @@ def extract_chart_with_gemini(image_url: str) -> list[dict]:
     )
 
     payload = {
-        "contents": [{
-            "parts": [
-                {"text": prompt},
-                {"inline_data": {"mime_type": content_type, "data": img_b64}},
-            ]
+        "model": "claude-haiku-4-5-20251001",
+        "max_tokens": 3000,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": content_type, "data": img_b64},
+                },
+                {"type": "text", "text": prompt},
+            ],
         }],
-        "generationConfig": {"temperature": 0, "maxOutputTokens": 3000},
     }
 
     api_resp = requests.post(
-        f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_KEY}",
-        headers={"Content-Type": "application/json"},
+        "https://api.anthropic.com/v1/messages",
+        headers={
+            "x-api-key": ANTHROPIC_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json",
+        },
         json=payload,
         timeout=60,
     )
     api_resp.raise_for_status()
 
-    result = api_resp.json()
-    content = result["candidates"][0]["content"]["parts"][0]["text"].strip()
-
-    # 마크다운 코드블록 제거
+    content = api_resp.json()["content"][0]["text"].strip()
     content = re.sub(r"^```(?:json)?\s*", "", content)
     content = re.sub(r"\s*```$", "", content)
 
@@ -260,7 +311,7 @@ def main():
     print(f"\n이미지: {image_url}")
     print("Gemini로 차트 추출 중...")
 
-    entries = extract_chart_with_gemini(image_url)
+    entries = extract_chart_with_claude(image_url)
     print(f"  추출: {len(entries)}건 / K-pop: {sum(1 for e in entries if is_kpop(e['artist']))}건\n")
 
     if not entries:
