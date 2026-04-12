@@ -29,10 +29,14 @@ import requests
 from bs4 import BeautifulSoup
 
 # ── 설정 ──────────────────────────────────────────────────
-SUPABASE_URL          = os.environ.get("SUPABASE_URL", "https://hqoovxivfabnwfdjnuvs.supabase.co").strip()
-SUPABASE_KEY          = os.environ.get("SUPABASE_KEY", "").strip()
-SPOTIFY_CLIENT_ID     = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
-SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip()
+def _clean_env(key: str, default: str = "") -> str:
+    """환경변수에서 줄바꿈/공백 문자를 제거 (GitHub Secrets 복붙 오염 방지)"""
+    return re.sub(r"[\r\n\t\s]", "", os.environ.get(key, default))
+
+SUPABASE_URL          = _clean_env("SUPABASE_URL", "https://hqoovxivfabnwfdjnuvs.supabase.co")
+SUPABASE_KEY          = _clean_env("SUPABASE_KEY")
+SPOTIFY_CLIENT_ID     = _clean_env("SPOTIFY_CLIENT_ID")
+SPOTIFY_CLIENT_SECRET = _clean_env("SPOTIFY_CLIENT_SECRET")
 
 SB_HEADERS = {
     "apikey": SUPABASE_KEY,
