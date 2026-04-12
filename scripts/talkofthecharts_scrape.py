@@ -178,10 +178,12 @@ def find_prediction_image_url() -> str | None:
 
 
 # ── Claude Vision으로 차트 추출 ──────────────────────────
-def extract_chart_with_claude(image_url: str) -> list[dict]:
+def extract_chart_with_claude(image_url: str) -> tuple[list[dict], str | None, str | None]:
     """
-    Anthropic Claude Vision API로 이미지에서 차트 추출.
-    반환: [{"rank": 1, "title": "...", "artist": "..."}]
+    Anthropic Claude Vision API로 이미지에서 차트 + 메타데이터 추출.
+    반환: (entries, stage, chart_date)
+      - stage: "early" | "midweek" | "final"
+      - chart_date: "YYYY-MM-DD"
     """
     if not ANTHROPIC_KEY:
         raise EnvironmentError("ANTHROPIC_API_KEY 환경변수가 필요합니다.")
@@ -194,9 +196,12 @@ def extract_chart_with_claude(image_url: str) -> list[dict]:
 
     prompt = (
         "This image shows a Billboard Hot 100 prediction chart. "
-        "Extract all visible song entries and return ONLY a JSON array — no explanation, no markdown. "
-        'Format: [{"rank": 1, "title": "Song Title", "artist": "Artist Name"}, ...] '
-        "Include every entry visible. If rank is missing, infer from position."
+        "1. Read the title to determine: stage (early/midweek/final) and chart_date (the chart date in YYYY-MM-DD). "
+        "   - 'Early' predictions → stage=early, 'Midweek' → stage=midweek, 'Final' → stage=final. "
+        "   - chart_date is the date mentioned as the chart date (e.g. 'April 18th, 2026 chart' → 2026-04-18). "
+        "2. Extract all visible song entries. "
+        "Return ONLY a JSON object — no explanation, no markdown. "
+        'Format: {"stage": "midweek", "chart_date": "2026-04-18", "entries": [{"rank": 1, "title": "Song Title", "artist": "Artist Name"}, ...]}'
     )
 
     payload = {
@@ -205,10 +210,7 @@ def extract_chart_with_claude(image_url: str) -> list[dict]:
         "messages": [{
             "role": "user",
             "content": [
-                {
-                    "type": "image",
-                    "source": {"type": "base64", "media_type": content_type, "data": img_b64},
-                },
+                {"type": "image", "source": {"type": "base64", "media_type": content_type, "data": img_b64}},
                 {"type": "text", "text": prompt},
             ],
         }],
@@ -216,11 +218,7 @@ def extract_chart_with_claude(image_url: str) -> list[dict]:
 
     api_resp = requests.post(
         "https://api.anthropic.com/v1/messages",
-        headers={
-            "x-api-key": ANTHROPIC_KEY,
-            "anthropic-version": "2023-06-01",
-            "content-type": "application/json",
-        },
+        headers={"x-api-key": ANTHROPIC_KEY, "anthropic-version": "2023-06-01", "content-type": "application/json"},
         json=payload,
         timeout=60,
     )
@@ -230,16 +228,19 @@ def extract_chart_with_claude(image_url: str) -> list[dict]:
     content = re.sub(r"^```(?:json)?\s*", "", content)
     content = re.sub(r"\s*```$", "", content)
 
-    entries = json.loads(content)
-    return [
+    parsed = json.loads(content)
+    stage = parsed.get("stage")
+    chart_date = parsed.get("chart_date")
+    entries = [
         {
             "rank": int(e["rank"]),
             "title": str(e.get("title", "")).strip(),
             "artist": str(e.get("artist", "")).strip(),
         }
-        for e in entries
+        for e in parsed.get("entries", [])
         if e.get("rank") and e.get("title")
     ]
+    return entries, stage, chart_date
 
 
 # ── Supabase 저장 ──────────────────────────────────────────
@@ -308,10 +309,31 @@ def main():
             print("이미지를 찾을 수 없습니다. --url 옵션으로 직접 지정하세요.")
             sys.exit(1)
 
-    print(f"\n이미지: {image_url}")
-    print("Gemini로 차트 추출 중...")
+    # 이미지 로컬 저장
+    img_dir = os.path.join(os.path.dirname(__file__), "..", "data", "prediction-images")
+    os.makedirs(img_dir, exist_ok=True)
 
-    entries = extract_chart_with_claude(image_url)
+    print(f"\n이미지: {image_url}")
+    print("Claude로 차트 추출 중...")
+
+    entries, img_stage, img_chart_date = extract_chart_with_claude(image_url)
+
+    # 이미지에서 추출한 stage/chart_date 우선 사용
+    if img_stage and img_chart_date:
+        print(f"  이미지 기준: stage={img_stage}, chart_date={img_chart_date}")
+        stage = img_stage
+        chart_date = date.fromisoformat(img_chart_date)
+    else:
+        print(f"  이미지에서 메타데이터 추출 실패 — 날짜 계산값 사용: stage={stage}, chart_date={chart_date}")
+
+    # 이미지 로컬 저장
+    img_filename = f"{chart_date}_{stage}.jpg"
+    img_path = os.path.join(img_dir, img_filename)
+    img_bytes = requests.get(image_url, headers={"User-Agent": "kcharted-bot/1.0"}, timeout=30).content
+    with open(img_path, "wb") as f:
+        f.write(img_bytes)
+    print(f"  이미지 저장: data/prediction-images/{img_filename}")
+
     print(f"  추출: {len(entries)}건 / K-pop: {sum(1 for e in entries if is_kpop(e['artist']))}건\n")
 
     if not entries:

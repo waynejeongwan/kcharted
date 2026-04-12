@@ -53,3 +53,4 @@ __pycache__/
 !tsconfig*.json
 !package*.json
 !next*.json
+data/prediction-images/
