@@ -18,6 +18,8 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
   }
 }
 
+export const revalidate = 3600
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
@@ -31,7 +33,7 @@ async function getKpopAlbumRankings(): Promise<ArtistAlbumRanking[]> {
         Authorization: `Bearer ${SUPABASE_KEY}`,
       },
       body: JSON.stringify({}),
-      cache: 'no-store',
+      next: { revalidate: 3600 },
     })
     if (!res.ok) {
       console.error('get_kpop_billboard200_rankings error:', await res.text())

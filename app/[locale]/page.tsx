@@ -1,7 +1,8 @@
 import { getTranslations } from 'next-intl/server'
 import { Link } from '@/navigation'
-import { createSupabaseServerClient } from '@/lib/supabase-server'
 import type { Metadata } from 'next'
+
+export const revalidate = 3600  // 1시간마다 재생성
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -11,7 +12,7 @@ async function sbPost(rpc: string) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
     body: '{}',
-    cache: 'no-store',
+    next: { revalidate: 3600 },  // 1시간 캐시 (차트 데이터는 하루 1회 업데이트)
   })
   if (!res.ok) return []
   return res.json()
@@ -39,48 +40,54 @@ interface PredictionEntry {
   chart_date: string
 }
 
+async function sbFetch(path: string, params: Record<string, string> = {}) {
+  const url = new URL(`${SUPABASE_URL}/rest/v1/${path}`)
+  Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v))
+  const res = await fetch(url.toString(), {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` },
+    next: { revalidate: 3600 },
+  })
+  if (!res.ok) return []
+  return res.json()
+}
+
 async function getLatestHot100Top10(): Promise<Hot100Entry[]> {
   try {
-    const supabase = await createSupabaseServerClient()
-    const { data: chart } = await supabase.from('charts').select('id').eq('slug', 'billboard-hot-100').single()
-    if (!chart) return []
+    const charts = await sbFetch('charts', { 'slug': 'eq.billboard-hot-100', 'select': 'id', 'limit': '1' })
+    if (!charts[0]) return []
+    const chartId = charts[0].id
 
-    const { data: latest } = await supabase
-      .from('chart_entries').select('chart_date').eq('chart_id', chart.id)
-      .order('chart_date', { ascending: false }).limit(1).single()
-    if (!latest) return []
+    const latest = await sbFetch('chart_entries', {
+      'chart_id': `eq.${chartId}`, 'select': 'chart_date', 'order': 'chart_date.desc', 'limit': '1',
+    })
+    if (!latest[0]) return []
 
-    const { data: entries } = await supabase
-      .from('chart_entries').select('rank, track_id')
-      .eq('chart_id', chart.id).eq('chart_date', latest.chart_date)
-      .order('rank').limit(10)
-    if (!entries) return []
+    const entries = await sbFetch('chart_entries', {
+      'chart_id': `eq.${chartId}`, 'chart_date': `eq.${latest[0].chart_date}`,
+      'select': 'rank,track_id', 'order': 'rank', 'limit': '10',
+    })
+    if (!entries.length) return []
 
-    const trackIds = entries.map((e) => e.track_id)
-    const { data: tracks } = await supabase
-      .from('tracks').select('id, title, artist_id').in('id', trackIds)
-    if (!tracks) return []
+    const trackIds = entries.map((e: { track_id: number }) => e.track_id).join(',')
+    const tracks = await sbFetch('tracks', { 'id': `in.(${trackIds})`, 'select': 'id,title,artist_id' })
+    if (!tracks.length) return []
 
-    const artistIds = [...new Set(tracks.map((t) => t.artist_id))]
-    const { data: artists } = await supabase
-      .from('artists').select('id, name, is_kpop, canonical_artist_id').in('id', artistIds)
-    if (!artists) return []
+    const artistIds = [...new Set(tracks.map((t: { artist_id: number }) => t.artist_id))].join(',')
+    const artists = await sbFetch('artists', { 'id': `in.(${artistIds})`, 'select': 'id,name,is_kpop,canonical_artist_id' })
 
-    // Build lookup maps
-    const trackMap = new Map(tracks.map((t) => [t.id, t]))
-    const artistMap = new Map(artists.map((a) => [a.id, a]))
+    const trackMap = new Map(tracks.map((t: { id: number; title: string; artist_id: number }) => [t.id, t]))
+    const artistMap = new Map(artists.map((a: { id: number; name: string; is_kpop: boolean; canonical_artist_id: number | null }) => [a.id, a]))
 
-    return entries.map((e) => {
-      const track = trackMap.get(e.track_id)
-      const artist = track ? artistMap.get(track.artist_id) : null
+    return entries.map((e: { rank: number; track_id: number }) => {
+      const track = trackMap.get(e.track_id) as { title: string; artist_id: number } | undefined
+      const artist = track ? artistMap.get(track.artist_id) as { name: string; is_kpop: boolean; canonical_artist_id: number | null } | undefined : null
       const canonicalArtist = artist?.canonical_artist_id
-        ? artistMap.get(artist.canonical_artist_id) : null
-      const isKpop = !!(artist?.is_kpop || canonicalArtist?.is_kpop)
+        ? artistMap.get(artist.canonical_artist_id) as { is_kpop: boolean } | undefined : null
       return {
         rank: e.rank,
         title: track?.title ?? '–',
         artist: artist?.name ?? '–',
-        is_kpop: isKpop,
+        is_kpop: !!(artist?.is_kpop || canonicalArtist?.is_kpop),
       }
     })
   } catch {
@@ -90,21 +97,15 @@ async function getLatestHot100Top10(): Promise<Hot100Entry[]> {
 
 async function getLatestPredictionTop10(): Promise<PredictionEntry[]> {
   try {
-    const supabase = await createSupabaseServerClient()
-    // Find latest prediction (most recent scraped_at)
-    const { data: latest } = await supabase
-      .from('hot100_predictions')
-      .select('chart_date, stage')
-      .order('scraped_at', { ascending: false })
-      .limit(1).single()
-    if (!latest) return []
+    const latest = await sbFetch('hot100_predictions', {
+      'select': 'chart_date,stage', 'order': 'scraped_at.desc', 'limit': '1',
+    })
+    if (!latest[0]) return []
 
-    const { data: rows } = await supabase
-      .from('hot100_predictions')
-      .select('rank, title, artist, is_kpop, stage, chart_date')
-      .eq('chart_date', latest.chart_date)
-      .eq('stage', latest.stage)
-      .order('rank').limit(10)
+    const rows = await sbFetch('hot100_predictions', {
+      'chart_date': `eq.${latest[0].chart_date}`, 'stage': `eq.${latest[0].stage}`,
+      'select': 'rank,title,artist,is_kpop,stage,chart_date', 'order': 'rank', 'limit': '10',
+    })
     return rows ?? []
   } catch {
     return []

@@ -1,7 +1,11 @@
-import { createSupabaseServerClient } from '@/lib/supabase-server'
 import { Link } from '@/navigation'
 import KpopStreamingClient from './KpopStreamingClient'
 import type { Metadata } from 'next'
+
+export const revalidate = 3600
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const SUPABASE_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 export interface StreamingStat {
   id: number
@@ -26,25 +30,26 @@ async function getData(): Promise<{
   snapshots: Snapshot[]
 }> {
   try {
-    const supabase = await createSupabaseServerClient()
+    const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+    const cache = { next: { revalidate: 3600 } }
 
-    const { data: stats } = await supabase
-      .from('kpop_spotify_stats')
-      .select('id, track_title, artist_name, main_artist, spotify_track_id, release_date, total_streams, daily_streams, updated_at')
-      .order('total_streams', { ascending: false })
-      .limit(500)
-
-    if (!stats || stats.length === 0) return { stats: [], snapshots: [] }
+    const statsRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/kpop_spotify_stats?select=id,track_title,artist_name,main_artist,spotify_track_id,release_date,total_streams,daily_streams,updated_at&order=total_streams.desc&limit=500`,
+      { headers, ...cache }
+    )
+    if (!statsRes.ok) return { stats: [], snapshots: [] }
+    const stats: StreamingStat[] = await statsRes.json()
+    if (!stats.length) return { stats: [], snapshots: [] }
 
     // 상위 5개 트랙의 스냅샷 데이터 (성장 곡선용)
-    const top5ids = stats.slice(0, 5).map((s) => s.id)
-    const { data: snapshots } = await supabase
-      .from('kpop_stream_snapshots')
-      .select('stat_id, snapshot_date, total_streams')
-      .in('stat_id', top5ids)
-      .order('snapshot_date', { ascending: true })
+    const top5ids = stats.slice(0, 5).map((s) => s.id).join(',')
+    const snapshotsRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/kpop_stream_snapshots?stat_id=in.(${top5ids})&select=stat_id,snapshot_date,total_streams&order=snapshot_date.asc`,
+      { headers, ...cache }
+    )
+    const snapshots: Snapshot[] = snapshotsRes.ok ? await snapshotsRes.json() : []
 
-    return { stats: stats ?? [], snapshots: snapshots ?? [] }
+    return { stats, snapshots }
   } catch {
     return { stats: [], snapshots: [] }
   }
