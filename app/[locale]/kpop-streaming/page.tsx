@@ -7,6 +7,7 @@ export interface StreamingStat {
   id: number
   track_title: string
   artist_name: string
+  main_artist: string | null
   spotify_track_id: string | null
   release_date: string | null
   total_streams: number
@@ -29,7 +30,7 @@ async function getData(): Promise<{
 
     const { data: stats } = await supabase
       .from('kpop_spotify_stats')
-      .select('id, track_title, artist_name, spotify_track_id, release_date, total_streams, daily_streams, updated_at')
+      .select('id, track_title, artist_name, main_artist, spotify_track_id, release_date, total_streams, daily_streams, updated_at')
       .order('total_streams', { ascending: false })
       .limit(500)
 

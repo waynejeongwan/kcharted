@@ -66,17 +66,34 @@ def get_spotify_token() -> Optional[str]:
         return _spotify_token
     return None
 
-def verify_track_artist(spotify_track_id: str, expected_artist_id: str) -> bool:
-    """Spotify API로 트랙의 실제 아티스트가 expected_artist_id를 포함하는지 확인"""
+def get_track_info(spotify_track_id: str, kpop_artist_id: str) -> tuple[bool, Optional[str]]:
+    """
+    Spotify API로 트랙 아티스트를 확인하고 피처링 여부를 판단.
+    반환: (is_valid, main_artist)
+      - is_valid: kpop_artist_id가 트랙 아티스트에 포함되면 True
+      - main_artist: K-pop 아티스트가 피처링인 경우 원곡 아티스트 이름, 원곡이면 None
+    """
     token = get_spotify_token()
     if not token:
-        return True  # 토큰 없으면 검증 생략 (통과)
+        return True, None  # 토큰 없으면 검증 생략
     resp = requests.get(f"https://api.spotify.com/v1/tracks/{spotify_track_id}",
                         headers={"Authorization": f"Bearer {token}"}, timeout=10)
     if not resp.ok:
-        return True  # API 오류시 통과
+        return True, None  # API 오류시 통과
     artists = resp.json().get("artists", [])
-    return any(a["id"] == expected_artist_id for a in artists)
+    artist_ids = [a["id"] for a in artists]
+
+    if kpop_artist_id not in artist_ids:
+        return False, None  # 이 아티스트의 곡이 아님
+
+    # K-pop 아티스트가 첫 번째(원곡) 아티스트인지 확인
+    if artists and artists[0]["id"] == kpop_artist_id:
+        return True, None  # 원곡 아티스트 → main_artist 불필요
+
+    # 피처링: 원곡 아티스트(들) 이름 반환
+    main_names = [a["name"] for a in artists if a["id"] != kpop_artist_id]
+    main_artist = " & ".join(main_names) if main_names else None
+    return True, main_artist
 
 MILESTONES = [
     (100_000_000,   "days_to_100m", "reached_100m_at"),
@@ -238,12 +255,15 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
         if not total or total <= 0:
             continue
 
-        # Spotify 아티스트 검증: 트랙이 실제로 이 아티스트의 것인지 확인
-        if track_id and not verify_track_artist(track_id, spotify_artist_id):
-            rejected += 1
-            if rejected <= 3:
-                print(f"\n    [검증 실패] '{title}' — 실제 아티스트 불일치 (spotify_artist_id={spotify_artist_id})")
-            continue
+        # Spotify 아티스트 검증: 트랙이 실제로 이 아티스트의 것인지 확인 + 피처링 감지
+        main_artist = None
+        if track_id:
+            is_valid, main_artist = get_track_info(track_id, spotify_artist_id)
+            if not is_valid:
+                rejected += 1
+                if rejected <= 3:
+                    print(f"\n    [검증 실패] '{title}' — 실제 아티스트 불일치 (spotify_artist_id={spotify_artist_id})")
+                continue
 
         daily = None
         if col_daily is not None and col_daily < len(tds):
@@ -255,6 +275,7 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
             "spotify_track_id": track_id,
             "total_streams": total,
             "daily_streams": daily,
+            "main_artist": main_artist,  # None이면 K-pop 아티스트가 원곡, 문자열이면 피처링
         })
 
     if rejected > 3:

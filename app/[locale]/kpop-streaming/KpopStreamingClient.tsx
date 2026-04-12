@@ -285,7 +285,11 @@ export default function KpopStreamingClient({
                   {is1b && <span className="shrink-0 text-xs bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded px-1.5 py-0.5">1B 💎</span>}
                   {is500m && <span className="shrink-0 text-xs bg-purple-500/20 text-purple-300 border border-purple-500/30 rounded px-1.5 py-0.5">500M</span>}
                 </div>
-                <span className="hidden sm:block text-sm text-zinc-400 truncate">{s.artist_name}</span>
+                <span className="hidden sm:block text-sm text-zinc-400 truncate">
+                  {s.main_artist
+                    ? <>{s.main_artist} <span className="text-zinc-600">feat.</span> <span className="text-pink-400">{s.artist_name}</span></>
+                    : s.artist_name}
+                </span>
                 <span className="hidden sm:block text-sm font-mono text-green-400 font-semibold text-right">{fmtStreams(s.total_streams)}</span>
                 <span className="hidden sm:block text-xs font-mono text-zinc-500 text-right">
                   {s.daily_streams ? fmtStreams(s.daily_streams) : '–'}
@@ -303,7 +307,11 @@ export default function KpopStreamingClient({
                     {s.track_title}
                     {is1b && <span className="text-xs text-yellow-300">💎</span>}
                   </p>
-                  <p className="text-xs text-zinc-500 truncate">{s.artist_name}</p>
+                  <p className="text-xs text-zinc-500 truncate">
+                    {s.main_artist
+                      ? <>{s.main_artist} <span className="text-zinc-600">feat.</span> <span className="text-pink-400">{s.artist_name}</span></>
+                      : s.artist_name}
+                  </p>
                 </div>
                 <span className="sm:hidden text-sm font-mono text-green-400 font-semibold shrink-0">
                   {fmtStreams(s.total_streams)}
