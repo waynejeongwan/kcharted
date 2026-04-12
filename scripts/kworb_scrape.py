@@ -29,8 +29,10 @@ import requests
 from bs4 import BeautifulSoup
 
 # ── 설정 ──────────────────────────────────────────────────
-SUPABASE_URL = os.environ.get("SUPABASE_URL", "https://hqoovxivfabnwfdjnuvs.supabase.co")
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+SUPABASE_URL          = os.environ.get("SUPABASE_URL", "https://hqoovxivfabnwfdjnuvs.supabase.co").strip()
+SUPABASE_KEY          = os.environ.get("SUPABASE_KEY", "").strip()
+SPOTIFY_CLIENT_ID     = os.environ.get("SPOTIFY_CLIENT_ID", "").strip()
+SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "").strip()
 
 SB_HEADERS = {
     "apikey": SUPABASE_KEY,
@@ -40,6 +42,37 @@ SB_HEADERS = {
 }
 
 UA = {"User-Agent": "Mozilla/5.0 (compatible; kcharted-bot/1.0; +https://kcharted.com)"}
+
+# ── Spotify 토큰 ───────────────────────────────────────────
+_spotify_token: Optional[str] = None
+_spotify_token_expiry: float = 0.0
+
+def get_spotify_token() -> Optional[str]:
+    global _spotify_token, _spotify_token_expiry
+    if not SPOTIFY_CLIENT_ID or not SPOTIFY_CLIENT_SECRET:
+        return None
+    if _spotify_token and time.time() < _spotify_token_expiry:
+        return _spotify_token
+    resp = requests.post("https://accounts.spotify.com/api/token",
+                         data={"grant_type": "client_credentials"},
+                         auth=(SPOTIFY_CLIENT_ID, SPOTIFY_CLIENT_SECRET), timeout=10)
+    if resp.ok:
+        _spotify_token = resp.json()["access_token"]
+        _spotify_token_expiry = time.time() + 3500
+        return _spotify_token
+    return None
+
+def verify_track_artist(spotify_track_id: str, expected_artist_id: str) -> bool:
+    """Spotify API로 트랙의 실제 아티스트가 expected_artist_id를 포함하는지 확인"""
+    token = get_spotify_token()
+    if not token:
+        return True  # 토큰 없으면 검증 생략 (통과)
+    resp = requests.get(f"https://api.spotify.com/v1/tracks/{spotify_track_id}",
+                        headers={"Authorization": f"Bearer {token}"}, timeout=10)
+    if not resp.ok:
+        return True  # API 오류시 통과
+    artists = resp.json().get("artists", [])
+    return any(a["id"] == expected_artist_id for a in artists)
 
 MILESTONES = [
     (100_000_000,   "days_to_100m", "reached_100m_at"),
@@ -178,6 +211,7 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
     col_daily = next((i for i, h in enumerate(headers) if "daily" in h), None)
 
     results = []
+    rejected = 0
     for tr in table.find_all("tr")[1:]:
         tds = tr.find_all("td")
         if len(tds) < 2:
@@ -200,6 +234,13 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
         if not total or total <= 0:
             continue
 
+        # Spotify 아티스트 검증: 트랙이 실제로 이 아티스트의 것인지 확인
+        if track_id and not verify_track_artist(track_id, spotify_artist_id):
+            rejected += 1
+            if rejected <= 3:
+                print(f"\n    [검증 실패] '{title}' — 실제 아티스트 불일치 (spotify_artist_id={spotify_artist_id})")
+            continue
+
         daily = None
         if col_daily is not None and col_daily < len(tds):
             daily = parse_num(tds[col_daily].get_text(strip=True))
@@ -211,6 +252,11 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
             "total_streams": total,
             "daily_streams": daily,
         })
+
+    if rejected > 3:
+        print(f"\n    [검증 실패] 총 {rejected}개 트랙 제외 (아티스트 불일치)")
+    elif rejected > 0:
+        print(f"\n    [검증] {rejected}개 트랙 제외")
 
     return results
 
