@@ -35,6 +35,7 @@ import smtplib
 import traceback
 import tempfile
 from datetime import date, timedelta
+from difflib import SequenceMatcher
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
@@ -300,6 +301,117 @@ def extract_chart_with_claude(image_url: str, tweet_text: str = "") -> tuple[lis
     return entries, stage, chart_date
 
 
+# ── 최신 Hot 100 기반 아티스트명 보정 ────────────────────────
+def load_latest_hot100() -> dict[str, str]:
+    """
+    Supabase에서 가장 최근 Billboard Hot 100 데이터를 조회해
+    {title_lower: artist_name} 딕셔너리 반환.
+    """
+    try:
+        # 최신 chart_date 조회
+        charts_resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/charts",
+            headers=SB_HEADERS,
+            params={"slug": "eq.billboard-hot-100", "select": "id", "limit": "1"},
+            timeout=10,
+        )
+        if not charts_resp.ok or not charts_resp.json():
+            return {}
+        chart_id = charts_resp.json()[0]["id"]
+
+        latest_resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/chart_entries",
+            headers=SB_HEADERS,
+            params={"chart_id": f"eq.{chart_id}", "select": "chart_date", "order": "chart_date.desc", "limit": "1"},
+            timeout=10,
+        )
+        if not latest_resp.ok or not latest_resp.json():
+            return {}
+        latest_date = latest_resp.json()[0]["chart_date"]
+
+        # 해당 날짜 전체 차트 (track_id 포함)
+        entries_resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/chart_entries",
+            headers=SB_HEADERS,
+            params={"chart_id": f"eq.{chart_id}", "chart_date": f"eq.{latest_date}", "select": "track_id", "limit": "100"},
+            timeout=10,
+        )
+        if not entries_resp.ok:
+            return {}
+        track_ids = [e["track_id"] for e in entries_resp.json()]
+        if not track_ids:
+            return {}
+
+        tracks_resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/tracks",
+            headers=SB_HEADERS,
+            params={"id": f"in.({','.join(str(t) for t in track_ids)})", "select": "title,artist_id", "limit": "100"},
+            timeout=10,
+        )
+        if not tracks_resp.ok:
+            return {}
+        tracks = tracks_resp.json()
+
+        artist_ids = list({t["artist_id"] for t in tracks})
+        artists_resp = requests.get(
+            f"{SUPABASE_URL}/rest/v1/artists",
+            headers=SB_HEADERS,
+            params={"id": f"in.({','.join(str(a) for a in artist_ids)})", "select": "id,name", "limit": "200"},
+            timeout=10,
+        )
+        if not artists_resp.ok:
+            return {}
+        artist_map = {a["id"]: a["name"] for a in artists_resp.json()}
+
+        result = {}
+        for t in tracks:
+            title_key = t["title"].strip().lower()
+            artist_name = artist_map.get(t["artist_id"], "")
+            if title_key and artist_name:
+                result[title_key] = artist_name
+
+        print(f"  Hot 100 참조 데이터 로드: {len(result)}곡 ({latest_date})")
+        return result
+
+    except Exception as e:
+        print(f"  [경고] Hot 100 참조 데이터 로드 실패: {e}")
+        return {}
+
+
+def title_similarity(a: str, b: str) -> float:
+    return SequenceMatcher(None, a.lower().strip(), b.lower().strip()).ratio()
+
+
+def correct_artists(entries: list[dict], hot100_lookup: dict[str, str]) -> list[dict]:
+    """
+    추출된 entries의 아티스트명을 최신 Hot 100 데이터로 보정.
+    제목 유사도 50% 이상인 경우에만 보정.
+    """
+    if not hot100_lookup:
+        return entries
+
+    corrected = []
+    for e in entries:
+        title = e["title"].strip()
+        best_score = 0.0
+        best_artist = None
+        best_match_title = None
+
+        for ref_title, ref_artist in hot100_lookup.items():
+            score = title_similarity(title, ref_title)
+            if score > best_score:
+                best_score = score
+                best_artist = ref_artist
+                best_match_title = ref_title
+
+        if best_score >= 0.5 and best_artist and best_artist != e["artist"]:
+            log(f"  [보정] #{e['rank']} '{title}': '{e['artist']}' → '{best_artist}' (유사도 {best_score:.0%}, 참조: '{best_match_title}')")
+            e = {**e, "artist": best_artist}
+        corrected.append(e)
+
+    return corrected
+
+
 # ── Supabase 저장 ──────────────────────────────────────────
 def save_to_db(entries: list[dict], stage: str, chart_date: date, image_url: str | None, dry_run: bool):
     rows = [
@@ -416,11 +528,16 @@ def main():
             f.write(img_bytes)
         log(f"  이미지 저장: data/prediction-images/{img_filename}")
 
-        kpop_count = sum(1 for e in entries if is_kpop(e['artist']))
-        log(f"  추출: {len(entries)}건 / K-pop: {kpop_count}건\n")
-
         if not entries:
             raise RuntimeError("추출 결과 없음. 이미지 URL을 확인하세요.")
+
+        # 최신 Hot 100 데이터로 아티스트명 보정
+        log("Hot 100 참조 데이터로 아티스트명 보정 중...")
+        hot100_lookup = load_latest_hot100()
+        entries = correct_artists(entries, hot100_lookup)
+
+        kpop_count = sum(1 for e in entries if is_kpop(e['artist']))
+        log(f"  추출: {len(entries)}건 / K-pop: {kpop_count}건\n")
 
         save_to_db(entries, stage, chart_date, image_url, args.dry_run)
         log("\n완료!")
