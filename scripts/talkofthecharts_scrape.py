@@ -158,7 +158,7 @@ def find_prediction_tweet() -> dict | None:
     var imgs = Array.from(a.querySelectorAll('img'))
       .map(function(x){ return x.src; })
       .filter(function(s){ return s.indexOf('pbs.twimg.com/media') >= 0; })
-      .map(function(s){ return s.replace(/name=[^&]+/, 'name=large'); });
+      .map(function(s){ return s.replace(/name=[^&]+/, 'name=orig'); });
     var unique = Array.from(new Set(imgs));
     if (unique.length === 0) continue;
     var testid = 'tweetText';
@@ -260,7 +260,7 @@ def extract_chart_with_claude(image_url: str, tweet_text: str = "") -> tuple[lis
     ).format(tweet_hint=tweet_hint)
 
     payload = {
-        "model": "claude-haiku-4-5-20251001",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 3000,
         "messages": [{
             "role": "user",
@@ -325,7 +325,8 @@ def save_to_db(entries: list[dict], stage: str, chart_date: date, image_url: str
 
     resp = requests.post(
         f"{SUPABASE_URL}/rest/v1/hot100_predictions",
-        headers=SB_HEADERS,
+        headers={**SB_HEADERS, "Prefer": "resolution=merge-duplicates,return=minimal"},
+        params={"on_conflict": "chart_date,stage,rank"},
         json=rows,
         timeout=30,
     )
