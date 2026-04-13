@@ -33,6 +33,7 @@ import subprocess
 import time
 import smtplib
 import traceback
+import tempfile
 from datetime import date, timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -146,40 +147,49 @@ def find_prediction_tweet() -> dict | None:
     log(f"  X 탭 로딩 대기 {CHROME_LOAD_WAIT}초...")
     time.sleep(CHROME_LOAD_WAIT)
 
-    # 트윗 텍스트 + 이미지를 함께 추출하는 JS
-    # 각 article에서 텍스트와 이미지를 묶어서 반환, 이미지 있는 트윗만
-    js = (
-        "(function(){"
-        "var articles=Array.from(document.querySelectorAll('article'));"
-        "var result=[];"
-        "for(var i=0;i<Math.min(5,articles.length);i++){"
-        "  var a=articles[i];"
-        "  var imgs=Array.from(a.querySelectorAll('img'))"
-        "    .map(function(x){return x.src;})"
-        "    .filter(function(s){return s.indexOf('pbs.twimg.com/media')>=0;})"
-        "    .map(function(s){return s.replace(/name=[^&]+/,'name=large');});"
-        "  var unique=[...new Set(imgs)];"
-        "  if(unique.length===0) continue;"
-        "  var textEl=a.querySelector('[data-testid=\"tweetText\"]');"
-        "  var text=textEl?textEl.innerText:'';"
-        "  result.push({text:text,images:unique});"
-        "}"
-        "return JSON.stringify(result.slice(0,3));"
-        "})()"
-    )
-    applescript = (
-        'tell application "Google Chrome"\n'
-        '  repeat with w in windows\n'
-        '    repeat with t in tabs of w\n'
-        '      if URL of t contains "x.com/talkofthecharts" then\n'
-        f'        set r to execute t javascript "{js}"\n'
-        '        return r\n'
-        '      end if\n'
-        '    end repeat\n'
-        '  end repeat\n'
-        '  return ""\n'
-        'end tell'
-    )
+    # JS를 임시 파일에 저장한 뒤 AppleScript에서 파일을 읽어 실행
+    # → AppleScript 문자열 내 이스케이프 문제 완전 회피
+    js_code = """\
+(function(){
+  var articles = Array.from(document.querySelectorAll('article'));
+  var result = [];
+  for (var i = 0; i < Math.min(5, articles.length); i++) {
+    var a = articles[i];
+    var imgs = Array.from(a.querySelectorAll('img'))
+      .map(function(x){ return x.src; })
+      .filter(function(s){ return s.indexOf('pbs.twimg.com/media') >= 0; })
+      .map(function(s){ return s.replace(/name=[^&]+/, 'name=large'); });
+    var unique = Array.from(new Set(imgs));
+    if (unique.length === 0) continue;
+    var testid = 'tweetText';
+    var textEl = a.querySelector('[data-testid="' + testid + '"]');
+    var text = textEl ? textEl.innerText : '';
+    result.push({text: text, images: unique});
+  }
+  return JSON.stringify(result.slice(0, 3));
+})()"""
+
+    js_tmp = tempfile.NamedTemporaryFile(mode='w', suffix='.js', delete=False, encoding='utf-8')
+    js_tmp.write(js_code)
+    js_tmp.close()
+    js_path = js_tmp.name
+
+    # AppleScript: JS 파일을 읽어서 execute javascript로 실행
+    applescript = f'''\
+set jsFile to open for access POSIX file "{js_path}"
+set jsCode to read jsFile
+close access jsFile
+tell application "Google Chrome"
+  repeat with w in windows
+    repeat with t in tabs of w
+      if URL of t contains "x.com/talkofthecharts" then
+        set r to execute t javascript jsCode
+        return r
+      end if
+    end repeat
+  end repeat
+  return ""
+end tell'''
 
     for attempt in range(1, APPLESCRIPT_RETRIES + 1):
         result = subprocess.run(["osascript", "-e", applescript], capture_output=True, text=True, timeout=30)
@@ -189,7 +199,13 @@ def find_prediction_tweet() -> dict | None:
         if attempt < APPLESCRIPT_RETRIES:
             log(f"  {5 * attempt}초 후 재시도...")
             time.sleep(5 * attempt)
-    else:
+
+    try:
+        os.unlink(js_path)
+    except Exception:
+        pass
+
+    if result.returncode != 0 or not result.stdout.strip():
         return None
 
     raw = result.stdout.strip()
