@@ -4,6 +4,7 @@ Billboard Hot 100 / Billboard 200 → Supabase 저장
 """
 
 import os
+import re
 import time
 import requests
 from datetime import date
@@ -16,8 +17,8 @@ except ImportError as e:
     raise SystemExit(f"[오류] billboard 패키지 문제: {e}\n실행: pip install 'billboard.py'")
 
 # ── 설정 (환경변수) ────────────────────────────────────
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-SUPABASE_KEY = os.environ["SUPABASE_KEY"]
+SUPABASE_URL = re.sub(r"[\r\n\t\s]", "", os.environ["SUPABASE_URL"])
+SUPABASE_KEY = re.sub(r"[\r\n\t\s]", "", os.environ["SUPABASE_KEY"])
 
 CHARTS = {
     "billboard-hot-100": "hot-100",
