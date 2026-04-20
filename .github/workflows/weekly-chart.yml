@@ -20,7 +20,10 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install -r scripts/requirements.txt
+        run: |
+          pip install requests beautifulsoup4
+          pip install "billboard.py"
+          python -c "import billboard; billboard.ChartData" && echo "billboard.py OK"
 
       - name: Run chart collector
         env:

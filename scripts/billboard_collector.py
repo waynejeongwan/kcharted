@@ -6,8 +6,14 @@ Billboard Hot 100 / Billboard 200 → Supabase 저장
 import os
 import time
 import requests
-import billboard
 from datetime import date
+
+try:
+    import billboard
+    if not hasattr(billboard, 'ChartData'):
+        raise ImportError("billboard.ChartData not found — wrong package installed. Need 'billboard.py', not 'billboard'")
+except ImportError as e:
+    raise SystemExit(f"[오류] billboard 패키지 문제: {e}\n실행: pip install 'billboard.py'")
 
 # ── 설정 (환경변수) ────────────────────────────────────
 SUPABASE_URL = os.environ["SUPABASE_URL"]
