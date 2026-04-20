@@ -66,40 +66,57 @@ def get_spotify_token() -> Optional[str]:
         return _spotify_token
     return None
 
-def get_track_info(spotify_track_id: str, kpop_artist_id: str) -> tuple[bool, Optional[str]]:
+def batch_verify_tracks(track_ids: list[str], kpop_artist_id: str) -> dict[str, Optional[str]]:
     """
-    Spotify API로 트랙 아티스트를 확인하고 피처링 여부를 판단.
-    반환: (is_valid, main_artist)
-      - is_valid: kpop_artist_id가 트랙 아티스트에 포함되면 True
-      - main_artist: K-pop 아티스트가 피처링인 경우 원곡 아티스트 이름, 원곡이면 None
+    Spotify tracks API (최대 50개 배치)로 트랙 목록을 한꺼번에 검증.
+    반환: {track_id: main_artist | None | "INVALID"}
+      - None      : K-pop 아티스트가 원곡
+      - "INVALID" : 이 아티스트의 곡이 아님 → 제외
+      - str       : 피처링 트랙의 원곡 아티스트명
     """
     token = get_spotify_token()
     if not token:
-        return True, None  # 토큰 없으면 검증 생략
-    resp = requests.get(f"https://api.spotify.com/v1/tracks/{spotify_track_id}",
-                        headers={"Authorization": f"Bearer {token}"}, timeout=10)
-    if resp.status_code == 429:
-        retry_after = int(resp.headers.get("Retry-After", 5))
-        time.sleep(retry_after)
-        resp = requests.get(f"https://api.spotify.com/v1/tracks/{spotify_track_id}",
-                            headers={"Authorization": f"Bearer {token}"}, timeout=10)
-    if not resp.ok:
-        return True, None  # API 오류시 통과
-    time.sleep(0.1)  # Spotify rate limit 방지
-    artists = resp.json().get("artists", [])
-    artist_ids = [a["id"] for a in artists]
+        return {tid: None for tid in track_ids}  # 검증 생략 (통과)
 
-    if kpop_artist_id not in artist_ids:
-        return False, None  # 이 아티스트의 곡이 아님
+    result: dict[str, Optional[str]] = {}
+    BATCH = 50
+    for i in range(0, len(track_ids), BATCH):
+        batch = track_ids[i:i + BATCH]
+        for attempt in range(3):
+            resp = requests.get(
+                "https://api.spotify.com/v1/tracks",
+                headers={"Authorization": f"Bearer {token}"},
+                params={"ids": ",".join(batch)},
+                timeout=15,
+            )
+            if resp.status_code == 429:
+                wait = int(resp.headers.get("Retry-After", 10))
+                print(f"    Spotify rate limit — {wait}s 대기...")
+                time.sleep(wait)
+                continue
+            if not resp.ok:
+                # API 오류 시 배치 전체 통과
+                for tid in batch:
+                    result[tid] = None
+                break
+            tracks_data = resp.json().get("tracks", [])
+            for track in tracks_data:
+                if not track:
+                    continue
+                tid = track["id"]
+                artists = track.get("artists", [])
+                artist_ids = [a["id"] for a in artists]
+                if kpop_artist_id not in artist_ids:
+                    result[tid] = "INVALID"
+                elif artists and artists[0]["id"] == kpop_artist_id:
+                    result[tid] = None  # 원곡
+                else:
+                    main_names = [a["name"] for a in artists if a["id"] != kpop_artist_id]
+                    result[tid] = " & ".join(main_names) if main_names else None
+            break
+        time.sleep(0.2)  # 배치 간 딜레이
 
-    # K-pop 아티스트가 첫 번째(원곡) 아티스트인지 확인
-    if artists and artists[0]["id"] == kpop_artist_id:
-        return True, None  # 원곡 아티스트 → main_artist 불필요
-
-    # 피처링: 원곡 아티스트(들) 이름 반환
-    main_names = [a["name"] for a in artists if a["id"] != kpop_artist_id]
-    main_artist = " & ".join(main_names) if main_names else None
-    return True, main_artist
+    return result
 
 MILESTONES = [
     (100_000_000,   "days_to_100m", "reached_100m_at"),
@@ -262,16 +279,6 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
         if not total or total <= 0:
             continue
 
-        # Spotify 아티스트 검증: 트랙이 실제로 이 아티스트의 것인지 확인 + 피처링 감지
-        main_artist = None
-        if track_id:
-            is_valid, main_artist = get_track_info(track_id, spotify_artist_id)
-            if not is_valid:
-                rejected += 1
-                if rejected <= 3:
-                    print(f"\n    [검증 실패] '{title}' — 실제 아티스트 불일치 (spotify_artist_id={spotify_artist_id})")
-                continue
-
         daily = None
         if col_daily is not None and col_daily < len(tds):
             daily = parse_num(tds[col_daily].get_text(strip=True))
@@ -282,14 +289,35 @@ def scrape_artist_songs(artist_name: str, spotify_artist_id: str) -> list[dict]:
             "spotify_track_id": track_id,
             "total_streams": total,
             "daily_streams": daily,
-            "main_artist": main_artist,  # None이면 K-pop 아티스트가 원곡, 문자열이면 피처링
         })
 
-    if rejected > 3:
-        print(f"\n    [검증 실패] 총 {rejected}개 트랙 제외 (아티스트 불일치)")
-    elif rejected > 0:
-        print(f"\n    [검증] {rejected}개 트랙 제외")
+    # Spotify 배치 검증 (트랙 ID 있는 것만)
+    track_ids_to_verify = [r["spotify_track_id"] for r in results if r["spotify_track_id"]]
+    if track_ids_to_verify:
+        verify_map = batch_verify_tracks(track_ids_to_verify, spotify_artist_id)
+        verified = []
+        rejected = 0
+        for r in results:
+            tid = r["spotify_track_id"]
+            if not tid:
+                verified.append(r)
+                continue
+            status = verify_map.get(tid)
+            if status == "INVALID":
+                rejected += 1
+                if rejected <= 3:
+                    print(f"\n    [검증 실패] '{r['track_title']}' — 아티스트 불일치")
+                continue
+            r["main_artist"] = status  # None=원곡, str=피처링
+            verified.append(r)
+        if rejected > 3:
+            print(f"\n    [검증 실패] 총 {rejected}개 트랙 제외")
+        elif rejected > 0:
+            print(f"\n    [검증] {rejected}개 트랙 제외")
+        return verified
 
+    for r in results:
+        r["main_artist"] = None
     return results
 
 
