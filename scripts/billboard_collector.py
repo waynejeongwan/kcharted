@@ -52,9 +52,10 @@ def sb_upsert(table, data, on_conflict, retries=5):
             return resp.json()
         if resp.status_code in (500, 502, 503, 504) and attempt < retries - 1:
             wait = 10 * (attempt + 1)
-            print(f"  ⚠️ {resp.status_code} 에러, {wait}초 후 재시도...")
+            print(f"  ⚠️ {resp.status_code} 에러, {wait}초 후 재시도... ({resp.text[:200]})")
             time.sleep(wait)
             continue
+        print(f"  ❌ upsert 실패 ({table}): {resp.status_code} {resp.text[:300]}")
         resp.raise_for_status()
 
 # ── 아티스트/트랙/차트 헬퍼 ───────────────────────────
@@ -128,13 +129,18 @@ def collect(chart_date=None):
         chart_id = get_chart_id(slug)
         is_album = (bb_name == "billboard-200")
 
+        saved = 0
         for entry in chart:
-            artist_id = upsert_artist(entry.artist)
-            track_id  = upsert_track(entry.title, artist_id, is_album=is_album)
-            upsert_chart_entry(chart_id, track_id, entry.rank, chart_date_actual)
-            print(f"  {entry.rank:3}. {entry.title} - {entry.artist}")
+            try:
+                artist_id = upsert_artist(entry.artist)
+                track_id  = upsert_track(entry.title, artist_id, is_album=is_album)
+                upsert_chart_entry(chart_id, track_id, entry.rank, chart_date_actual)
+                saved += 1
+                print(f"  {entry.rank:3}. {entry.title} - {entry.artist}")
+            except Exception as e:
+                print(f"  ❌ 저장 실패 ({entry.rank}. {entry.title}): {e}")
 
-        print(f"  ✅ {len(chart)}곡 저장 완료 (날짜: {chart_date_actual})\n")
+        print(f"  ✅ {saved}/{len(chart)}곡 저장 완료 (날짜: {chart_date_actual})\n")
 
 if __name__ == "__main__":
     import sys
